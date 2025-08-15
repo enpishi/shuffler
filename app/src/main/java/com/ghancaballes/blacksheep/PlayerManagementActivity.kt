@@ -12,6 +12,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
@@ -307,7 +309,7 @@ class PlayerManagementActivity : AppCompatActivity() {
 
         docRef.get().addOnSuccessListener { document ->
             if (!document.exists()) {
-                val player = Player(name = playerName, wins = 0, losses = 0)
+                val player = Player(name = playerName, wins = 0, losses = 0, gamesPlayed = 0, winrate = 0.0)
                 docRef.set(player)
                     .addOnSuccessListener { Toast.makeText(this, "$playerName added.", Toast.LENGTH_SHORT).show() }
                     .addOnFailureListener { e -> Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show() }
@@ -334,39 +336,56 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
 
         val availablePlayers = allPlayers.filter { it.id !in activePlayerIds }
-
         val dialogView = layoutInflater.inflate(R.layout.dialog_add_late_player, null)
-        val builder = AlertDialog.Builder(this)
-            .setView(dialogView)
-            .setNegativeButton("Cancel", null)
-
-        val dialog = builder.create()
-
-        val existingPlayersTitle = dialogView.findViewById<TextView>(R.id.textViewDialogTitle)
-        val existingPlayersRecyclerView = dialogView.findViewById<RecyclerView>(R.id.recyclerViewExistingPlayers)
+        val chipGroup = dialogView.findViewById<ChipGroup>(R.id.chipGroupExistingPlayers)
         val newPlayerNameEditText = dialogView.findViewById<EditText>(R.id.editTextNewPlayerName)
         val addNewPlayerButton = dialogView.findViewById<Button>(R.id.buttonAddNewPlayer)
+        val existingPlayersTitle = dialogView.findViewById<TextView>(R.id.textViewExistingPlayersTitle)
 
         if (availablePlayers.isEmpty()) {
             existingPlayersTitle.visibility = View.GONE
-            existingPlayersRecyclerView.visibility = View.GONE
+            chipGroup.visibility = View.GONE
         } else {
-            existingPlayersTitle.visibility = View.VISIBLE
-            existingPlayersRecyclerView.visibility = View.VISIBLE
-            existingPlayersRecyclerView.layoutManager = LinearLayoutManager(this)
-            existingPlayersRecyclerView.adapter = ExistingPlayerAdapter(availablePlayers) { player ->
-                restingPlayers.add(player)
-                updateRestingPlayersView()
-                Toast.makeText(this, "${player.name} added to the resting queue.", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
+            availablePlayers.forEach { player ->
+                val chip = Chip(this)
+                chip.text = player.name
+                chip.isCheckable = true
+                chip.tag = player
+                chipGroup.addView(chip)
             }
         }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Add Late Players")
+            .setView(dialogView)
+            .setPositiveButton("Add Selected") { _, _ ->
+                val selectedPlayers = mutableListOf<Player>()
+                for (i in 0 until chipGroup.childCount) {
+                    val chip = chipGroup.getChildAt(i) as Chip
+                    if (chip.isChecked) {
+                        selectedPlayers.add(chip.tag as Player)
+                    }
+                }
+
+                if (selectedPlayers.isNotEmpty()) {
+                    restingPlayers.addAll(selectedPlayers)
+                    updateRestingPlayersView()
+                    val playerNames = selectedPlayers.joinToString(", ") { it.name }
+                    Toast.makeText(this, "$playerNames added to the resting queue.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
 
         addNewPlayerButton.setOnClickListener {
             val playerName = newPlayerNameEditText.text.toString().trim()
             if (playerName.isNotEmpty()) {
                 addLatePlayer(playerName) {
+                    // This will dismiss the main dialog after adding the new player
                     dialog.dismiss()
+                    // Re-open the dialog to show the new player in the list.
+                    // In a more advanced implementation, you might just update the chipgroup.
+                    showAddLatePlayerDialog()
                 }
             } else {
                 Toast.makeText(this, "Player name cannot be empty.", Toast.LENGTH_SHORT).show()
@@ -385,7 +404,7 @@ class PlayerManagementActivity : AppCompatActivity() {
             return
         }
 
-        val newPlayer = Player(name = playerName, wins = 0, losses = 0)
+        val newPlayer = Player(name = playerName, wins = 0, losses = 0, gamesPlayed = 0, winrate = 0.0)
         db.collection("players").document(normalizedName).set(newPlayer)
             .addOnSuccessListener {
                 val playerWithId = newPlayer.copy(id = normalizedName)
@@ -514,4 +533,4 @@ class PlayerManagementActivity : AppCompatActivity() {
 
         mainDialog.show()
     }
-} // FIXED: Added the final closing brace for the class
+}
