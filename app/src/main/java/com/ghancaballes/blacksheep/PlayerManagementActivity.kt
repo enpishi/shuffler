@@ -14,6 +14,9 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
@@ -23,6 +26,8 @@ import java.util.LinkedList
 class PlayerManagementActivity : AppCompatActivity() {
 
     private lateinit var db: FirebaseFirestore
+    private lateinit var auth: FirebaseAuth
+    private lateinit var playersCollection: CollectionReference
 
     // --- UI Elements ---
     private lateinit var titleTextView: TextView
@@ -60,6 +65,16 @@ class PlayerManagementActivity : AppCompatActivity() {
         setContentView(R.layout.activity_player_management)
 
         db = Firebase.firestore
+        auth = Firebase.auth
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            Toast.makeText(this, "No authenticated user. Please login again.", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        playersCollection = db.collection("users").document(uid).collection("players")
+        Log.d("PlayersPath", "Using players collection: ${playersCollection.path}")
+
         initializeUI()
         initializeAdapters()
         setClickListeners()
@@ -96,13 +111,11 @@ class PlayerManagementActivity : AppCompatActivity() {
                 initialSelectedPlayers.remove(player)
             }
         }
-        // FIXED: Added back the showEditCourtDialog reference
         courtAdapter = CourtAdapter(currentCourts, this::handleGameFinished, this::showEditCourtDialog)
 
         playersRecyclerView.adapter = playerSelectionAdapter
         courtsRecyclerView.adapter = courtAdapter
     }
-
 
     private fun setClickListeners() {
         val addPlayerButton = findViewById<Button>(R.id.buttonAddPlayer)
@@ -132,7 +145,7 @@ class PlayerManagementActivity : AppCompatActivity() {
     }
 
     private fun listenForPlayerUpdates() {
-        db.collection("players").orderBy("name").addSnapshotListener { snapshots, e ->
+        playersCollection.orderBy("name").addSnapshotListener { snapshots, e ->
             if (e != null) {
                 Log.w("Firestore", "Listen failed.", e)
                 return@addSnapshotListener
@@ -150,6 +163,9 @@ class PlayerManagementActivity : AppCompatActivity() {
             }
             if (setupContainer.visibility == View.VISIBLE) {
                 playerSelectionAdapter.notifyDataSetChanged()
+            } else {
+                courtAdapter.notifyDataSetChanged()
+                updateRestingPlayersView()
             }
         }
     }
@@ -182,7 +198,6 @@ class PlayerManagementActivity : AppCompatActivity() {
         courtAdapter.notifyDataSetChanged()
         updateRestingPlayersView()
     }
-
 
     private fun startSession() {
         val selectedPlayerIds = initialSelectedPlayers.map { it.id }.toSet()
@@ -222,7 +237,7 @@ class PlayerManagementActivity : AppCompatActivity() {
             val snapshots = mutableMapOf<String, DocumentSnapshot>()
 
             for (player in allGamePlayers) {
-                val playerDocRef = db.collection("players").document(player.id)
+                val playerDocRef = playersCollection.document(player.id)
                 snapshots[player.id] = transaction.get(playerDocRef)
             }
 
@@ -282,7 +297,6 @@ class PlayerManagementActivity : AppCompatActivity() {
         updateRestingPlayersView()
     }
 
-
     private fun refillEmptyCourts() {
         for (court in currentCourts) {
             if (court.teams == null && restingPlayers.size >= 4) {
@@ -305,7 +319,7 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun addPlayerToFirestore(playerName: String) {
         val normalizedName = playerName.lowercase()
-        val docRef = db.collection("players").document(normalizedName)
+        val docRef = playersCollection.document(normalizedName)
 
         docRef.get().addOnSuccessListener { document ->
             if (!document.exists()) {
@@ -332,28 +346,24 @@ class PlayerManagementActivity : AppCompatActivity() {
         val teamB = mutableListOf<Player>()
 
         when (highSkillPlayers.size) {
-            // 4 high-skill or 0 high-skill (all regular)
             4, 0 -> {
                 teamA.add(players[0])
                 teamA.add(players[1])
                 teamB.add(players[2])
                 teamB.add(players[3])
             }
-            // 2 high-skill, 2 regular-skill (ideal balanced scenario)
             2 -> {
                 teamA.add(highSkillPlayers.removeFirst())
                 teamA.add(regularSkillPlayers.removeFirst())
                 teamB.add(highSkillPlayers.removeFirst())
                 teamB.add(regularSkillPlayers.removeFirst())
             }
-            // 1 high-skill, 3 regular-skill
             1 -> {
                 teamA.add(highSkillPlayers.removeFirst())
                 teamA.add(regularSkillPlayers.removeFirst())
                 teamB.add(regularSkillPlayers.removeFirst())
                 teamB.add(regularSkillPlayers.removeFirst())
             }
-            // 3 high-skill, 1 regular-skill
             3 -> {
                 teamA.add(highSkillPlayers.removeFirst())
                 teamA.add(highSkillPlayers.removeFirst())
@@ -421,10 +431,7 @@ class PlayerManagementActivity : AppCompatActivity() {
             val playerName = newPlayerNameEditText.text.toString().trim()
             if (playerName.isNotEmpty()) {
                 addLatePlayer(playerName) {
-                    // This will dismiss the main dialog after adding the new player
                     dialog.dismiss()
-                    // Re-open the dialog to show the new player in the list.
-                    // In a more advanced implementation, you might just update the chipgroup.
                     showAddLatePlayerDialog()
                 }
             } else {
@@ -445,7 +452,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
 
         val newPlayer = Player(name = playerName, wins = 0, losses = 0, gamesPlayed = 0, winrate = 0.0)
-        db.collection("players").document(normalizedName).set(newPlayer)
+        playersCollection.document(normalizedName).set(newPlayer)
             .addOnSuccessListener {
                 val playerWithId = newPlayer.copy(id = normalizedName)
                 allPlayers.add(playerWithId)
@@ -467,14 +474,13 @@ class PlayerManagementActivity : AppCompatActivity() {
             currentCourts.add(Court(newTeams, newCourtNumber))
 
             courtAdapter.notifyDataSetChanged()
-            updateRestingPlayersView() // FIXED: Corrected the function call and completed the function body.
+            updateRestingPlayersView()
             Toast.makeText(this, "Court $newCourtNumber added.", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(this, "Need at least 4 resting players to add a new court.", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // FIXED: Added the entire missing function back into the class
     private fun showEditCourtDialog(courtIndex: Int) {
         val court = currentCourts.getOrNull(courtIndex) ?: return
         val (teamA, teamB) = court.teams ?: Pair(emptyList(), emptyList())
