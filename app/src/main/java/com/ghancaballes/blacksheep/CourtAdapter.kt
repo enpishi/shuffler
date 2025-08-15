@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 
 class CourtAdapter(
@@ -31,7 +32,7 @@ class CourtAdapter(
     }
 
     inner class CourtViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        // References to all the views in the new layout
+        // References to all the views in the layout
         private val courtName: TextView = itemView.findViewById(R.id.courtName)
         private val editCourtButton: Button = itemView.findViewById(R.id.buttonEditCourt)
         private val courtGrid: View = itemView.findViewById(R.id.courtGrid)
@@ -63,24 +64,41 @@ class CourtAdapter(
                 emptyCourtMessage.visibility = View.GONE
 
                 // Map players to quadrants
-                player1Name.text = teamA[0].name // Team A, Player 1 (Top Left)
-                player2Name.text = teamA[1].name // Team A, Player 2 (Bottom Left)
-                player3Name.text = teamB[0].name // Team B, Player 1 (Top Right)
-                player4Name.text = teamB[1].name // Team B, Player 2 (Bottom Right)
+                val a1 = teamA[0]
+                val a2 = teamA[1]
+                val b1 = teamB[0]
+                val b2 = teamB[1]
+
+                player1Name.text = a1.name // Team A, Player 1 (Top Left)
+                player2Name.text = a2.name // Team A, Player 2 (Bottom Left)
+                player3Name.text = b1.name // Team B, Player 1 (Top Right)
+                player4Name.text = b2.name // Team B, Player 2 (Bottom Right)
+
+                // Set highlight backgrounds based on winrate
+                setPlayerBackground(player1Name, a1)
+                setPlayerBackground(player2Name, a2)
+                setPlayerBackground(player3Name, b1)
+                setPlayerBackground(player4Name, b2)
 
                 // Set winner button listeners
-                buttonWinnerTeamA.setOnClickListener {
-                    onWinnerSelected(teamA, teamB, position)
-                }
-                buttonWinnerTeamB.setOnClickListener {
-                    onWinnerSelected(teamB, teamA, position)
-                }
-
+                buttonWinnerTeamA.setOnClickListener { onWinnerSelected(teamA, teamB, position) }
+                buttonWinnerTeamB.setOnClickListener { onWinnerSelected(teamB, teamA, position) }
             } else {
                 // Court is empty or not properly formed, hide the grid and show the message
                 courtGrid.visibility = View.GONE
                 emptyCourtMessage.visibility = View.VISIBLE
             }
+        }
+
+        private fun setPlayerBackground(textView: TextView, player: Player) {
+            val context = textView.context
+            val colorRes = when {
+                player.winrate >= 0.80 -> R.color.skill_high    // Bright Red
+                player.winrate >= 0.60 -> R.color.skill_medium  // Bright Orange
+                player.winrate >= 0.50 -> R.color.skill_low     // Bright Yellow
+                else -> android.R.color.transparent
+            }
+            textView.setBackgroundColor(ContextCompat.getColor(context, colorRes))
         }
     }
 }

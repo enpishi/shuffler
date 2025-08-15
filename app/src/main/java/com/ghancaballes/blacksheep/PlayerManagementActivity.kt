@@ -321,8 +321,48 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun generateTeamsForCourt(players: List<Player>): Pair<List<Player>, List<Player>>? {
         if (players.size != 4) return null
-        val p = players.shuffled()
-        return Pair(listOf(p[0], p[1]), listOf(p[2], p[3]))
+
+        val highSkillPlayers = players.filter { it.winrate >= 0.8 }.toMutableList()
+        val regularSkillPlayers = players.filter { it.winrate < 0.8 }.toMutableList()
+
+        highSkillPlayers.shuffle()
+        regularSkillPlayers.shuffle()
+
+        val teamA = mutableListOf<Player>()
+        val teamB = mutableListOf<Player>()
+
+        when (highSkillPlayers.size) {
+            // 4 high-skill or 0 high-skill (all regular)
+            4, 0 -> {
+                teamA.add(players[0])
+                teamA.add(players[1])
+                teamB.add(players[2])
+                teamB.add(players[3])
+            }
+            // 2 high-skill, 2 regular-skill (ideal balanced scenario)
+            2 -> {
+                teamA.add(highSkillPlayers.removeFirst())
+                teamA.add(regularSkillPlayers.removeFirst())
+                teamB.add(highSkillPlayers.removeFirst())
+                teamB.add(regularSkillPlayers.removeFirst())
+            }
+            // 1 high-skill, 3 regular-skill
+            1 -> {
+                teamA.add(highSkillPlayers.removeFirst())
+                teamA.add(regularSkillPlayers.removeFirst())
+                teamB.add(regularSkillPlayers.removeFirst())
+                teamB.add(regularSkillPlayers.removeFirst())
+            }
+            // 3 high-skill, 1 regular-skill
+            3 -> {
+                teamA.add(highSkillPlayers.removeFirst())
+                teamA.add(highSkillPlayers.removeFirst())
+                teamB.add(highSkillPlayers.removeFirst())
+                teamB.add(regularSkillPlayers.removeFirst())
+            }
+        }
+
+        return Pair(teamA.shuffled(), teamB.shuffled())
     }
 
     private fun showAddLatePlayerDialog() {

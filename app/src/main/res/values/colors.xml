@@ -9,4 +9,9 @@
     <color name="button_red">#F44336</color>
     <color name="button_teal">#009688</color>
     <color name="button_purple">#9C27B0</color>
+
+    <!-- Skill highlight colors -->
+    <color name="skill_high">#FF453A</color>    <!-- Bright Red (>= 80%) -->
+    <color name="skill_medium">#FF9F0A</color>  <!-- Bright Orange (60%-79%) -->
+    <color name="skill_low">#FFD60A</color>     <!-- Bright Yellow (50%-59%) -->
 </resources>
