@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "62228513453",
+    "project_id": "badminton-shuffler",
+    "storage_bucket": "badminton-shuffler.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:62228513453:android:24ba7cfc9ec5efbfbbbc24",
+        "android_client_info": {
+          "package_name": "com.ghancaballes.blacksheep"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhn2pnEftukrSgYqLugRRV6SQaQN0X38U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

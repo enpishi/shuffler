@@ -1,0 +1,21 @@
+<resources>
+    <!-- You can add your app name here if it's not already present -->
+    <string name="app_name">Blacksheep</string>
+
+    <!-- Strings for PlayerManagementActivity -->
+    <string name="session_setup_title">Session Setup</string>
+    <string name="active_courts_title">Active Courts</string>
+    <string name="new_player_name_hint">New Player Name</string>
+    <string name="add_button">Add</string>
+    <string name="number_of_courts_label">Number of Courts:</string>
+    <string name="default_court_count">1</string>
+    <string name="select_players_label">Select Players for this Session:</string>
+    <string name="start_session_button">Start Session</string>
+
+    <!-- Strings for Game Action Buttons -->
+    <string name="end_session_button">END SESSION</string>
+    <!-- FIXED: Changed text to be shorter -->
+    <string name="add_late_player_button">ADD PLAYER</string>
+    <string name="add_court_button">ADD COURT</string>
+
+</resources>

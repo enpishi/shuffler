@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="light_green_badminton">#E8F5E9</color>
+    <color name="badminton_court_dark_green">#00bf63</color>
+    <color name="badminton_court_light_green">#7ed957</color>
+    <color name="badminton_vs_blue">#448AFF</color>
+    <color name="button_red">#F44336</color>
+    <color name="button_teal">#009688</color>
+    <color name="button_purple">#9C27B0</color>
+</resources>

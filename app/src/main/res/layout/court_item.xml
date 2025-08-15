@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="4dp"
+    app:cardBackgroundColor="@color/badminton_court_dark_green">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp">
+
+        <!-- Court Title -->
+        <TextView
+            android:id="@+id/courtName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/white"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="Court 1" />
+
+        <!-- Edit Button -->
+        <Button
+            android:id="@+id/buttonEditCourt"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="EDIT"
+            android:textColor="@android:color/white"
+            app:backgroundTint="@android:color/black"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- This container holds the actual court visual (excluding winner buttons) -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/courtGrid"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/court_background"
+            app:layout_constraintDimensionRatio="H,16:9"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/courtName">
+
+            <!-- Court Dividing Lines -->
+            <View
+                android:id="@+id/vertical_line"
+                android:layout_width="2dp"
+                android:layout_height="0dp"
+                android:background="@android:color/white"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <View
+                android:id="@+id/horizontal_line"
+                android:layout_width="0dp"
+                android:layout_height="2dp"
+                android:background="@android:color/white"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <!-- "VS" TextView in the center -->
+            <TextView
+                android:id="@+id/vs_text"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/vs_background"
+                android:gravity="center"
+                android:text="VS"
+                android:textColor="@android:color/white"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <!-- Player Names -->
+            <TextView
+                android:id="@+id/player1_name"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:gravity="center"
+                android:padding="8dp"
+                android:textColor="@android:color/black"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toTopOf="@id/horizontal_line"
+                app:layout_constraintEnd_toStartOf="@id/vertical_line"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                tools:text="Chad" />
+
+            <TextView
+                android:id="@+id/player2_name"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:gravity="center"
+                android:padding="8dp"
+                android:textColor="@android:color/black"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@id/vertical_line"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/horizontal_line"
+                tools:text="Chris" />
+
+            <TextView
+                android:id="@+id/player3_name"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:gravity="center"
+                android:padding="8dp"
+                android:textColor="@android:color/black"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toTopOf="@id/horizontal_line"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/vertical_line"
+                app:layout_constraintTop_toTopOf="parent"
+                tools:text="Charie" />
+
+            <TextView
+                android:id="@+id/player4_name"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:gravity="center"
+                android:padding="8dp"
+                android:textColor="@android:color/black"
+                android:textSize="18sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/vertical_line"
+                app:layout_constraintTop_toBottomOf="@id/horizontal_line"
+                tools:text="Tope" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- Winner Buttons - MOVED OUTSIDE courtGrid TO ALLOW HOVERING -->
+        <Button
+            android:id="@+id/buttonWinnerTeamA"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Winner"
+            app:layout_constraintBottom_toBottomOf="@id/courtGrid"
+            app:layout_constraintEnd_toStartOf="@+id/buttonWinnerTeamB"
+            app:layout_constraintHorizontal_chainStyle="spread"
+            app:layout_constraintStart_toStartOf="@id/courtGrid"
+            app:layout_constraintTop_toBottomOf="@id/courtGrid" />
+
+        <Button
+            android:id="@+id/buttonWinnerTeamB"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Winner"
+            app:layout_constraintBottom_toBottomOf="@id/courtGrid"
+            app:layout_constraintEnd_toEndOf="@id/courtGrid"
+            app:layout_constraintStart_toEndOf="@+id/buttonWinnerTeamA"
+            app:layout_constraintTop_toBottomOf="@id/courtGrid" />
+
+        <!-- Message for when the court is empty -->
+        <TextView
+            android:id="@+id/textViewEmptyCourt"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="48dp"
+            android:text="Court is Empty"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:textStyle="italic"
+            android:visibility="gone"
+            app:layout_constraintTop_toBottomOf="@id/courtName"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            tools:visibility="gone" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.cardview.widget.CardView>
