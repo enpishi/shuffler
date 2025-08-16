@@ -38,16 +38,19 @@ class CourtAdapter(
     }
 
     inner class CourtViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        // References to all the views in the layout
         private val courtName: TextView = itemView.findViewById(R.id.courtName)
         private val editCourtButton: Button = itemView.findViewById(R.id.buttonEditCourt)
         private val courtGrid: View = itemView.findViewById(R.id.courtGrid)
         private val emptyCourtMessage: TextView = itemView.findViewById(R.id.textViewEmptyCourt)
 
+        // Player name views
         private val player1Name: TextView = itemView.findViewById(R.id.player1_name)
         private val player2Name: TextView = itemView.findViewById(R.id.player2_name)
         private val player3Name: TextView = itemView.findViewById(R.id.player3_name)
         private val player4Name: TextView = itemView.findViewById(R.id.player4_name)
 
+        // Winner buttons
         private val buttonWinnerTeamA: Button = itemView.findViewById(R.id.buttonWinnerTeamA)
         private val buttonWinnerTeamB: Button = itemView.findViewById(R.id.buttonWinnerTeamB)
 
@@ -57,49 +60,59 @@ class CourtAdapter(
             val teamA = court.teams?.first
             val teamB = court.teams?.second
 
-            editCourtButton.setOnClickListener { onEditCourtClicked(position) }
+            editCourtButton.setOnClickListener {
+                onEditCourtClicked(position)
+            }
 
             if (teamA != null && teamA.size == 2 && teamB != null && teamB.size == 2) {
+                // Court has players, show the grid and hide the empty message
                 courtGrid.visibility = View.VISIBLE
                 emptyCourtMessage.visibility = View.GONE
 
+                // Map players to quadrants
                 val a1 = teamA[0]
                 val a2 = teamA[1]
                 val b1 = teamB[0]
                 val b2 = teamB[1]
 
-                player1Name.text = a1.name
-                player2Name.text = a2.name
-                player3Name.text = b1.name
-                player4Name.text = b2.name
+                player1Name.text = a1.name // Team A, Player 1 (Top Left)
+                player2Name.text = a2.name // Team A, Player 2 (Bottom Left)
+                player3Name.text = b1.name // Team B, Player 1 (Top Right)
+                player4Name.text = b2.name // Team B, Player 2 (Bottom Right)
 
+                // Set highlight backgrounds based on rank + winrate threshold
                 setPlayerBackground(player1Name, a1)
                 setPlayerBackground(player2Name, a2)
                 setPlayerBackground(player3Name, b1)
                 setPlayerBackground(player4Name, b2)
 
+                // Set winner button listeners
                 buttonWinnerTeamA.setOnClickListener { onWinnerSelected(teamA, teamB, position) }
                 buttonWinnerTeamB.setOnClickListener { onWinnerSelected(teamB, teamA, position) }
             } else {
+                // Court is empty or not properly formed, hide the grid and show the message
                 courtGrid.visibility = View.GONE
                 emptyCourtMessage.visibility = View.VISIBLE
             }
         }
 
         private fun setPlayerBackground(textView: TextView, player: Player) {
+            // Debug log to verify values at bind time
             Log.d(TAG, "Coloring ${player.name} gp=${player.gamesPlayed} wr=${player.winrate}")
 
+            val context = textView.context
+            // Only establish rank after MIN_RANKED_GAMES
             val colorRes = if (player.gamesPlayed < MIN_RANKED_GAMES) {
                 android.R.color.transparent
             } else {
                 when {
-                    player.winrate >= 0.80 -> R.color.skill_high
-                    player.winrate >= 0.60 -> R.color.skill_medium
-                    player.winrate >= 0.50 -> R.color.skill_low
+                    player.winrate >= 0.80 -> R.color.skill_high    // Bright Red
+                    player.winrate >= 0.60 -> R.color.skill_medium  // Bright Orange
+                    player.winrate >= 0.50 -> R.color.skill_low     // Bright Yellow
                     else -> android.R.color.transparent
                 }
             }
-            textView.setBackgroundColor(ContextCompat.getColor(textView.context, colorRes))
+            textView.setBackgroundColor(ContextCompat.getColor(context, colorRes))
         }
     }
 }

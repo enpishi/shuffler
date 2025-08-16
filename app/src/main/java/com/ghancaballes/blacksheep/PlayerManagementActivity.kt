@@ -21,6 +21,9 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import kotlin.math.abs
+import kotlin.math.min
+import kotlin.random.Random
 import java.util.LinkedList
 
 class PlayerManagementActivity : AppCompatActivity() {
@@ -56,9 +59,26 @@ class PlayerManagementActivity : AppCompatActivity() {
     private val currentCourts = mutableListOf<Court>()
     private var restingPlayers = LinkedList<Player>()
 
-    // Shuffling Algorithm State
+    // Shuffling Algorithm State (legacy)
     private val partnershipHistory = mutableMapOf<String, Int>()
-    private val recentOpponents = mutableMapOf<String, Set<String>>()
+    private val recentOpponents = mutableMapOf<String, Set<String>>() // reserved for future use
+
+    // In-session counters for pairing optimization
+    private val partnerCount = mutableMapOf<String, MutableMap<String, Int>>()    // teammates
+    private val opponentCount = mutableMapOf<String, MutableMap<String, Int>>()   // opponents
+
+    // Penalty weights (tunable)
+    private val ALPHA_PARTNER = 1.0 // avoid repeat teammates
+    private val BETA_OPPONENT = 0.5 // avoid repeat opponents
+
+    // Windowed refill mixing (tunable)
+    private val REFILL_WINDOW = 8
+
+    // Special rule: bias Chad & Budong to be teammates ~3 out of 5 (60%)
+    private val SPECIAL_DESIRED_RATIO = 0.60
+    private val SPECIAL_WEIGHT = 2.0 // strength of the bias vs balance/penalties
+    private var specialTogetherCount = 0   // times both Chad and Budong appeared in the same game
+    private var specialTeammateCount = 0   // times they were teammates
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -184,6 +204,12 @@ class PlayerManagementActivity : AppCompatActivity() {
         partnershipHistory.clear()
         recentOpponents.clear()
 
+        // Clear in-session memory
+        partnerCount.clear()
+        opponentCount.clear()
+        specialTogetherCount = 0
+        specialTeammateCount = 0
+
         playerSelectionAdapter.notifyDataSetChanged()
     }
 
@@ -215,17 +241,19 @@ class PlayerManagementActivity : AppCompatActivity() {
             return
         }
 
+        // Start with a random order
         val playerPool = playersForSession.shuffled().toMutableList()
 
         currentCourts.clear()
         for (i in 1..courtCount) {
             if (playerPool.size < 4) break
-            val courtPlayers = playerPool.take(4)
-            playerPool.removeAll(courtPlayers)
+            // Pop 4 at random from the pool to avoid contiguous chunks
+            val courtPlayers = popRandom(playerPool, 4)
             val teams = generateTeamsForCourt(courtPlayers)
             currentCourts.add(Court(teams, i))
         }
 
+        // Remaining players form the resting queue (already random)
         restingPlayers = LinkedList(playerPool)
 
         switchToGameView()
@@ -280,18 +308,27 @@ class PlayerManagementActivity : AppCompatActivity() {
     }
 
     private fun handleGameFinished(winners: List<Player>, losers: List<Player>, courtIndex: Int) {
+        // Persist stats
         updatePlayerStats(winners, losers)
 
+        // Legacy counters (not used in pairing yet)
         val winnerKey = winners.map { it.name }.sorted().joinToString("|")
         val loserKey = losers.map { it.name }.sorted().joinToString("|")
         partnershipHistory[winnerKey] = partnershipHistory.getOrDefault(winnerKey, 0) + 1
         partnershipHistory[loserKey] = partnershipHistory.getOrDefault(loserKey, 0) + 1
 
+        // Update in-session pairing memory
+        updatePairingStats(winners, losers)
+        updateSpecialPairStats(winners, losers) // NEW: track Chad/Budong ratio
+
+        // Queue players to rest
         val finishedPlayers = winners + losers
         restingPlayers.addAll(finishedPlayers)
 
+        // Clear this court
         currentCourts[courtIndex].teams = null
 
+        // Refill empty courts
         refillEmptyCourts()
 
         updateRestingPlayersView()
@@ -300,7 +337,8 @@ class PlayerManagementActivity : AppCompatActivity() {
     private fun refillEmptyCourts() {
         for (court in currentCourts) {
             if (court.teams == null && restingPlayers.size >= 4) {
-                val newCourtPlayers = (0..3).map { restingPlayers.removeFirst() }
+                // Draw 4 from a small window at the head of the queue to avoid strict ordering
+                val newCourtPlayers = drawFromRestingQueue(4)
                 court.teams = generateTeamsForCourt(newCourtPlayers)
             }
         }
@@ -333,47 +371,175 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
     }
 
-    private fun generateTeamsForCourt(players: List<Player>): Pair<List<Player>, List<Player>>? {
-        if (players.size != 4) return null
+    // ======================
+    // Improved Team Formation
+    // ======================
 
-        val highSkillPlayers = players.filter { it.winrate >= 0.8 }.toMutableList()
-        val regularSkillPlayers = players.filter { it.winrate < 0.8 }.toMutableList()
+    private fun rating(p: Player): Double {
+        // Use provisional baseline for unranked players
+        return if (p.gamesPlayed < 10) 0.5 else p.winrate
+    }
 
-        highSkillPlayers.shuffle()
-        regularSkillPlayers.shuffle()
+    private fun getPartnerCount(a: String, b: String): Int {
+        if (a == b) return 0
+        val (x, y) = if (a < b) a to b else b to a
+        return partnerCount[x]?.get(y) ?: 0
+    }
 
-        val teamA = mutableListOf<Player>()
-        val teamB = mutableListOf<Player>()
+    private fun getOpponentCount(a: String, b: String): Int {
+        if (a == b) return 0
+        val (x, y) = if (a < b) a to b else b to a
+        return opponentCount[x]?.get(y) ?: 0
+    }
 
-        when (highSkillPlayers.size) {
-            4, 0 -> {
-                teamA.add(players[0])
-                teamA.add(players[1])
-                teamB.add(players[2])
-                teamB.add(players[3])
-            }
-            2 -> {
-                teamA.add(highSkillPlayers.removeFirst())
-                teamA.add(regularSkillPlayers.removeFirst())
-                teamB.add(highSkillPlayers.removeFirst())
-                teamB.add(regularSkillPlayers.removeFirst())
-            }
-            1 -> {
-                teamA.add(highSkillPlayers.removeFirst())
-                teamA.add(regularSkillPlayers.removeFirst())
-                teamB.add(regularSkillPlayers.removeFirst())
-                teamB.add(regularSkillPlayers.removeFirst())
-            }
-            3 -> {
-                teamA.add(highSkillPlayers.removeFirst())
-                teamA.add(highSkillPlayers.removeFirst())
-                teamB.add(highSkillPlayers.removeFirst())
-                teamB.add(regularSkillPlayers.removeFirst())
+    private fun incPartnerCountPair(a: String, b: String) {
+        if (a == b) return
+        val (x, y) = if (a < b) a to b else b to a
+        val inner = partnerCount.getOrPut(x) { mutableMapOf() }
+        inner[y] = (inner[y] ?: 0) + 1
+    }
+
+    private fun incOpponentCountPair(a: String, b: String) {
+        if (a == b) return
+        val (x, y) = if (a < b) a to b else b to a
+        val inner = opponentCount.getOrPut(x) { mutableMapOf() }
+        inner[y] = (inner[y] ?: 0) + 1
+    }
+
+    private fun updatePairingStats(winners: List<Player>, losers: List<Player>) {
+        // Teammate increments
+        if (winners.size == 2) incPartnerCountPair(winners[0].id, winners[1].id)
+        if (losers.size == 2) incPartnerCountPair(losers[0].id, losers[1].id)
+        // Opponent increments: cross pairs
+        for (w in winners) {
+            for (l in losers) {
+                incOpponentCountPair(w.id, l.id)
             }
         }
-
-        return Pair(teamA.shuffled(), teamB.shuffled())
     }
+
+    // === Special rule helpers (Chad & Budong) ===
+
+    private fun isChad(p: Player) = p.name.equals("chad", ignoreCase = true)
+    private fun isBudong(p: Player) = p.name.equals("budong", ignoreCase = true)
+
+    private fun updateSpecialPairStats(winners: List<Player>, losers: List<Player>) {
+        val all = winners + losers
+        val hasChad = all.any { isChad(it) }
+        val hasBudong = all.any { isBudong(it) }
+        if (!hasChad || !hasBudong) return
+
+        specialTogetherCount += 1
+
+        val chadOnWinners = winners.any { isChad(it) }
+        val budongOnWinners = winners.any { isBudong(it) }
+        val chadOnLosers = losers.any { isChad(it) }
+        val budongOnLosers = losers.any { isBudong(it) }
+
+        val teammates = (chadOnWinners && budongOnWinners) || (chadOnLosers && budongOnLosers)
+        if (teammates) {
+            specialTeammateCount += 1
+        }
+    }
+
+    private fun specialBiasCost(teamA: List<Player>, teamB: List<Player>, four: List<Player>): Double {
+        // If both Chad and Budong are not in this 4-player group, no special adjustment
+        val hasChad = four.any { isChad(it) }
+        val hasBudong = four.any { isBudong(it) }
+        if (!hasChad || !hasBudong) return 0.0
+
+        val teammatesNow = (teamA.any { isChad(it) } && teamA.any { isBudong(it) }) ||
+                (teamB.any { isChad(it) } && teamB.any { isBudong(it) })
+
+        val together = specialTogetherCount
+        val teamed = specialTeammateCount
+        val currentRatio = if (together > 0) teamed.toDouble() / together else 0.0
+        val delta = SPECIAL_DESIRED_RATIO - currentRatio
+        // If delta > 0 we want more teaming -> reward teaming and penalize not teaming
+        // If delta < 0 we want less teaming -> penalize teaming and reward not teaming
+        val sign = if (teammatesNow) -1.0 else 1.0
+        return sign * SPECIAL_WEIGHT * delta
+    }
+
+    private fun pairingCost(teamA: List<Player>, teamB: List<Player>): Double {
+        // Balance by rating
+        val avgA = teamA.map { rating(it) }.average()
+        val avgB = teamB.map { rating(it) }.average()
+        val balanceCost = abs(avgA - avgB)
+
+        // Partner repeat penalties (within teams)
+        val partnerPenalty =
+            getPartnerCount(teamA[0].id, teamA[1].id) +
+                    getPartnerCount(teamB[0].id, teamB[1].id)
+
+        // Opponent repeat penalties (across teams)
+        var opponentPenalty = 0
+        for (a in teamA) for (b in teamB) {
+            opponentPenalty += getOpponentCount(a.id, b.id)
+        }
+
+        return balanceCost + ALPHA_PARTNER * partnerPenalty + BETA_OPPONENT * opponentPenalty
+    }
+
+    private fun chooseBestPairingOfFour(players: List<Player>): Pair<List<Player>, List<Player>> {
+        require(players.size == 4)
+        val (A, B, C, D) = players
+
+        val p1 = Pair(listOf(A, B), listOf(C, D))
+        val p2 = Pair(listOf(A, C), listOf(B, D))
+        val p3 = Pair(listOf(A, D), listOf(B, C))
+
+        val options = listOf(p1, p2, p3)
+
+        var best = options.first()
+        var bestCost = pairingCost(best.first, best.second) + specialBiasCost(best.first, best.second, players)
+
+        for (opt in options.drop(1)) {
+            val cost = pairingCost(opt.first, opt.second) + specialBiasCost(opt.first, opt.second, players)
+            if (cost < bestCost) {
+                best = opt
+                bestCost = cost
+            }
+        }
+        // Shuffle within each team to avoid positional bias
+        return Pair(best.first.shuffled(), best.second.shuffled())
+    }
+
+    private fun generateTeamsForCourt(players: List<Player>): Pair<List<Player>, List<Player>>? {
+        if (players.size != 4) return null
+        return chooseBestPairingOfFour(players)
+    }
+
+    // ======================
+    // Random selection helpers to avoid contiguous groups
+    // ======================
+
+    // Pop 'count' random distinct players from a mutable list, removing them.
+    private fun popRandom(list: MutableList<Player>, count: Int): List<Player> {
+        val c = min(count, list.size)
+        val picked = mutableListOf<Player>()
+        repeat(c) {
+            val idx = Random.nextInt(list.size)
+            picked += list.removeAt(idx)
+        }
+        return picked
+    }
+
+    // Draw 'n' players from the first REFILL_WINDOW positions of the resting queue (random within window)
+    private fun drawFromRestingQueue(n: Int): List<Player> {
+        val picked = mutableListOf<Player>()
+        val times = min(n, restingPlayers.size)
+        repeat(times) {
+            val window = min(REFILL_WINDOW, restingPlayers.size)
+            val idx = Random.nextInt(window) // 0..window-1
+            picked += restingPlayers.removeAt(idx)
+        }
+        return picked
+    }
+
+    // ======================
+    // UI: Add Late Players / Edit Court
+    // ======================
 
     private fun showAddLatePlayerDialog() {
         val activePlayerIds = mutableSetOf<String>()
@@ -468,7 +634,7 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun addCourt() {
         if (restingPlayers.size >= 4) {
-            val newCourtPlayers = (0..3).map { restingPlayers.removeFirst() }
+            val newCourtPlayers = drawFromRestingQueue(4)
             val newTeams = generateTeamsForCourt(newCourtPlayers)
             val newCourtNumber = (currentCourts.maxOfOrNull { it.courtNumber } ?: 0) + 1
             currentCourts.add(Court(newTeams, newCourtNumber))
