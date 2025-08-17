@@ -46,6 +46,16 @@
         app:layout_constraintStart_toStartOf="@id/guideline_start"
         app:layout_constraintEnd_toEndOf="@id/guideline_end">
 
+        <TextView
+            android:id="@+id/syncBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Syncing…"
+            android:padding="8dp"
+            android:background="@android:color/holo_orange_light"
+            android:textColor="@android:color/black"
+            android:visibility="gone" />
+
         <!-- Add Player Section -->
         <LinearLayout
             android:id="@+id/addPlayerSection"

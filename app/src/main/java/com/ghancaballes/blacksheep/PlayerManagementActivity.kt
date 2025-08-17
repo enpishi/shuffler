@@ -1,15 +1,11 @@
 package com.ghancaballes.blacksheep
 
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
 import android.view.View
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
@@ -18,7 +14,11 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import kotlin.math.abs
@@ -28,20 +28,28 @@ import java.util.LinkedList
 
 class PlayerManagementActivity : AppCompatActivity() {
 
+    // Firebase
     private lateinit var db: FirebaseFirestore
     private lateinit var auth: FirebaseAuth
     private lateinit var playersCollection: CollectionReference
+    private lateinit var uid: String
 
-    // --- UI Elements ---
+    // Optional sync banner (can be null if not in layout)
+    private var syncBanner: TextView? = null
+
+    // Session + matches
+    private var sessionId: String? = null
+    private var matchesListener: ListenerRegistration? = null
+    private val courtMatchSeq = mutableMapOf<Int, Int>() // per-court sequence for idempotent match IDs
+
+    // UI: Setup Views
     private lateinit var titleTextView: TextView
-
-    // Setup Views
     private lateinit var setupContainer: LinearLayout
     private lateinit var playersRecyclerView: RecyclerView
     private lateinit var courtCountEditText: EditText
     private lateinit var startSessionButton: Button
 
-    // Game Views
+    // UI: Game Views
     private lateinit var restingPlayersTextView: TextView
     private lateinit var courtsRecyclerView: RecyclerView
     private lateinit var gameActionButtons: LinearLayout
@@ -49,36 +57,36 @@ class PlayerManagementActivity : AppCompatActivity() {
     private lateinit var addCourtButton: Button
     private lateinit var endSessionButton: Button
 
-    // --- Adapters ---
+    // Adapters
     private lateinit var playerSelectionAdapter: PlayerSelectionAdapter
     private lateinit var courtAdapter: CourtAdapter
 
-    // --- State Management ---
+    // State: players + courts + resting queue
     private val allPlayers = mutableListOf<Player>()
     private val initialSelectedPlayers = mutableSetOf<Player>()
     private val currentCourts = mutableListOf<Court>()
     private var restingPlayers = LinkedList<Player>()
 
-    // Shuffling Algorithm State (legacy)
-    private val partnershipHistory = mutableMapOf<String, Int>()
+    // Shuffling memory
+    private val partnershipHistory = mutableMapOf<String, Int>() // legacy, not used in cost
     private val recentOpponents = mutableMapOf<String, Set<String>>() // reserved for future use
 
     // In-session counters for pairing optimization
     private val partnerCount = mutableMapOf<String, MutableMap<String, Int>>()    // teammates
     private val opponentCount = mutableMapOf<String, MutableMap<String, Int>>()   // opponents
 
+    // Fair-rest scheduling counters (games rested since last play)
+    private val restCount = mutableMapOf<String, Int>()
+
     // Penalty weights (tunable)
     private val ALPHA_PARTNER = 1.0 // avoid repeat teammates
     private val BETA_OPPONENT = 0.5 // avoid repeat opponents
-
-    // Windowed refill mixing (tunable)
-    private val REFILL_WINDOW = 8
 
     // Special rule: bias Chad & Budong to be teammates ~3 out of 5 (60%)
     private val SPECIAL_DESIRED_RATIO = 0.60
     private val SPECIAL_WEIGHT = 2.0 // strength of the bias vs balance/penalties
     private var specialTogetherCount = 0   // times both Chad and Budong appeared in the same game
-    private var specialTeammateCount = 0   // times they were teammates
+    private var specialTeammateCount = 0   // times they were teammates when together
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,12 +94,13 @@ class PlayerManagementActivity : AppCompatActivity() {
 
         db = Firebase.firestore
         auth = Firebase.auth
-        val uid = auth.currentUser?.uid
-        if (uid == null) {
+        val current = auth.currentUser?.uid
+        if (current == null) {
             Toast.makeText(this, "No authenticated user. Please login again.", Toast.LENGTH_LONG).show()
             finish()
             return
         }
+        uid = current
         playersCollection = db.collection("users").document(uid).collection("players")
         Log.d("PlayersPath", "Using players collection: ${playersCollection.path}")
 
@@ -104,14 +113,15 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun initializeUI() {
         titleTextView = findViewById(R.id.textViewTitle)
+        syncBanner = findViewById(R.id.syncBanner) // optional; safe if not in layout
 
-        // Setup Views
+        // Setup views
         setupContainer = findViewById(R.id.setupContainer)
         playersRecyclerView = findViewById(R.id.recyclerViewPlayers)
         courtCountEditText = findViewById(R.id.editTextCourtCount)
         startSessionButton = findViewById(R.id.buttonStartSession)
 
-        // Game Views
+        // Game views
         restingPlayersTextView = findViewById(R.id.textViewRestingPlayers)
         courtsRecyclerView = findViewById(R.id.recyclerViewCourts)
         gameActionButtons = findViewById(R.id.gameActionButtons)
@@ -198,19 +208,23 @@ class PlayerManagementActivity : AppCompatActivity() {
         courtsRecyclerView.visibility = View.GONE
         gameActionButtons.visibility = View.GONE
 
+        detachMatchesListener()
+        sessionId = null
+        courtMatchSeq.clear()
+
         currentCourts.clear()
         restingPlayers.clear()
         initialSelectedPlayers.clear()
         partnershipHistory.clear()
         recentOpponents.clear()
-
-        // Clear in-session memory
         partnerCount.clear()
         opponentCount.clear()
         specialTogetherCount = 0
         specialTeammateCount = 0
+        restCount.clear()
 
         playerSelectionAdapter.notifyDataSetChanged()
+        syncBanner?.visibility = View.GONE
     }
 
     private fun switchToGameView() {
@@ -230,7 +244,6 @@ class PlayerManagementActivity : AppCompatActivity() {
         val playersForSession = allPlayers.filter { it.id in selectedPlayerIds }
 
         val courtCount = courtCountEditText.text.toString().toIntOrNull() ?: 0
-
         if (courtCount <= 0) {
             Toast.makeText(this, "Please enter a valid number of courts.", Toast.LENGTH_SHORT).show()
             return
@@ -241,9 +254,19 @@ class PlayerManagementActivity : AppCompatActivity() {
             return
         }
 
+        // Start a new session
+        sessionId = System.currentTimeMillis().toString()
+        courtMatchSeq.clear()
+        attachMatchesListener()
+
         // Start with a random order
         val playerPool = playersForSession.shuffled().toMutableList()
 
+        // Initialize rest counters for all selected players
+        restCount.clear()
+        playersForSession.forEach { restCount[it.id] = 0 }
+
+        // Seed courts
         currentCourts.clear()
         for (i in 1..courtCount) {
             if (playerPool.size < 4) break
@@ -259,6 +282,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         switchToGameView()
     }
 
+    // Optional legacy function (not used when recordMatchAndUpdatePlayerStats is present)
     private fun updatePlayerStats(winners: List<Player>, losers: List<Player>) {
         db.runTransaction { transaction ->
             val allGamePlayers = winners + losers
@@ -307,11 +331,97 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleGameFinished(winners: List<Player>, losers: List<Player>, courtIndex: Int) {
-        // Persist stats
-        updatePlayerStats(winners, losers)
+    // Idempotent, read-before-write match recording with success toast
+    private fun recordMatchAndUpdatePlayerStats(winners: List<Player>, losers: List<Player>, courtIndex: Int) {
+        val currentSession = sessionId
+        if (currentSession == null) {
+            Log.w("Match", "No active session; cannot record match.")
+            return
+        }
+        val courtNumber = currentCourts.getOrNull(courtIndex)?.courtNumber ?: (courtIndex + 1)
+        val nextSeq = (courtMatchSeq[courtIndex] ?: 0) + 1
+        courtMatchSeq[courtIndex] = nextSeq
 
-        // Legacy counters (not used in pairing yet)
+        val matchId = "court${courtNumber}_seq$nextSeq"
+        val matchesRef = db.collection("users").document(uid)
+            .collection("sessions").document(currentSession)
+            .collection("matches")
+        val matchRef = matchesRef.document(matchId)
+
+        db.runTransaction { tx ->
+            // READS FIRST for idempotency + Firestore constraint
+            val matchSnap = tx.get(matchRef)
+            if (matchSnap.exists()) {
+                // Already recorded → no-op
+                return@runTransaction null
+            }
+
+            val allGamePlayers = winners + losers
+            val playerSnaps: Map<Player, DocumentSnapshot> = allGamePlayers.associateWith { p ->
+                val pref = playersCollection.document(p.id)
+                tx.get(pref)
+            }
+
+            playerSnaps.forEach { (p, snap) ->
+                if (!snap.exists()) {
+                    throw Exception("Document for player ${p.name} with ID ${p.id} does not exist!")
+                }
+            }
+
+            // WRITES
+            val matchData = mapOf(
+                "sessionId" to currentSession,
+                "matchId" to matchId,
+                "courtNumber" to courtNumber,
+                "winners" to winners.map { it.id },
+                "losers" to losers.map { it.id },
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+            tx.set(matchRef, matchData, SetOptions.merge())
+
+            playerSnaps.forEach { (p, snap) ->
+                val currentWins = snap.getLong("wins") ?: 0L
+                val currentLosses = snap.getLong("losses") ?: 0L
+
+                val won = winners.any { it.id == p.id }
+                val newWins = if (won) currentWins + 1 else currentWins
+                val newLosses = if (won) currentLosses else currentLosses + 1
+                val newGamesPlayed = newWins + newLosses
+                val newWinRate = if (newGamesPlayed > 0) newWins.toDouble() / newGamesPlayed else 0.0
+
+                tx.update(
+                    snap.reference,
+                    mapOf(
+                        "wins" to newWins,
+                        "losses" to newLosses,
+                        "gamesPlayed" to newGamesPlayed,
+                        "winrate" to newWinRate,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                )
+            }
+            null
+        }.addOnSuccessListener {
+            Log.d("PlayerStats", "Match $matchId recorded; player stats updated.")
+            val winnerNames = winners.joinToString(", ") { it.name }
+            Toast.makeText(this, "Recorded: Court $courtNumber — Winners: $winnerNames", Toast.LENGTH_SHORT).show()
+
+            // Force rebind of this court row in case the adapter disabled buttons
+            courtAdapter.notifyItemChanged(courtIndex)
+        }.addOnFailureListener { e ->
+            Log.e("PlayerStats", "Failed to record match $matchId.", e)
+            Toast.makeText(this, "Failed to record match: ${e.message}", Toast.LENGTH_LONG).show()
+
+            // Rebind the court to re-enable buttons if they were disabled
+            courtAdapter.notifyItemChanged(courtIndex)
+        }
+    }
+
+    private fun handleGameFinished(winners: List<Player>, losers: List<Player>, courtIndex: Int) {
+        // Persist (idempotent + offline-safe)
+        recordMatchAndUpdatePlayerStats(winners, losers, courtIndex)
+
+        // Legacy counters (not used in pairing cost)
         val winnerKey = winners.map { it.name }.sorted().joinToString("|")
         val loserKey = losers.map { it.name }.sorted().joinToString("|")
         partnershipHistory[winnerKey] = partnershipHistory.getOrDefault(winnerKey, 0) + 1
@@ -319,17 +429,21 @@ class PlayerManagementActivity : AppCompatActivity() {
 
         // Update in-session pairing memory
         updatePairingStats(winners, losers)
-        updateSpecialPairStats(winners, losers) // NEW: track Chad/Budong ratio
+        updateSpecialPairStats(winners, losers) // track Chad/Budong ratio
 
-        // Queue players to rest
-        val finishedPlayers = winners + losers
-        restingPlayers.addAll(finishedPlayers)
-
-        // Clear this court
+        // Mark court empty
         currentCourts[courtIndex].teams = null
 
-        // Refill empty courts
+        // Finished players go to rest with restCount = 0
+        val finishedPlayers = winners + losers
+        finishedPlayers.forEach { restCount[it.id] = 0 }
+        restingPlayers.addAll(finishedPlayers)
+
+        // Refill empty courts (prioritize longest-resting first)
         refillEmptyCourts()
+
+        // After refilling, increment rest counters for those STILL resting
+        restingPlayers.forEach { p -> restCount[p.id] = (restCount[p.id] ?: 0) + 1 }
 
         updateRestingPlayersView()
     }
@@ -337,8 +451,7 @@ class PlayerManagementActivity : AppCompatActivity() {
     private fun refillEmptyCourts() {
         for (court in currentCourts) {
             if (court.teams == null && restingPlayers.size >= 4) {
-                // Draw 4 from a small window at the head of the queue to avoid strict ordering
-                val newCourtPlayers = drawFromRestingQueue(4)
+                val newCourtPlayers = drawFairFromRestingQueue(4)
                 court.teams = generateTeamsForCourt(newCourtPlayers)
             }
         }
@@ -368,17 +481,13 @@ class PlayerManagementActivity : AppCompatActivity() {
             } else {
                 Toast.makeText(this, "$playerName already exists.", Toast.LENGTH_SHORT).show()
             }
+        }.addOnFailureListener { e ->
+            Toast.makeText(this, "Error checking player: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    // ======================
-    // Improved Team Formation
-    // ======================
-
-    private fun rating(p: Player): Double {
-        // Use provisional baseline for unranked players
-        return if (p.gamesPlayed < 10) 0.5 else p.winrate
-    }
+    // Rating used for balance cost
+    private fun rating(p: Player): Double = if (p.gamesPlayed < 10) 0.5 else p.winrate
 
     private fun getPartnerCount(a: String, b: String): Int {
         if (a == b) return 0
@@ -411,11 +520,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         if (winners.size == 2) incPartnerCountPair(winners[0].id, winners[1].id)
         if (losers.size == 2) incPartnerCountPair(losers[0].id, losers[1].id)
         // Opponent increments: cross pairs
-        for (w in winners) {
-            for (l in losers) {
-                incOpponentCountPair(w.id, l.id)
-            }
-        }
+        for (w in winners) for (l in losers) incOpponentCountPair(w.id, l.id)
     }
 
     // === Special rule helpers (Chad & Budong) ===
@@ -437,13 +542,10 @@ class PlayerManagementActivity : AppCompatActivity() {
         val budongOnLosers = losers.any { isBudong(it) }
 
         val teammates = (chadOnWinners && budongOnWinners) || (chadOnLosers && budongOnLosers)
-        if (teammates) {
-            specialTeammateCount += 1
-        }
+        if (teammates) specialTeammateCount += 1
     }
 
     private fun specialBiasCost(teamA: List<Player>, teamB: List<Player>, four: List<Player>): Double {
-        // If both Chad and Budong are not in this 4-player group, no special adjustment
         val hasChad = four.any { isChad(it) }
         val hasBudong = four.any { isBudong(it) }
         if (!hasChad || !hasBudong) return 0.0
@@ -455,24 +557,20 @@ class PlayerManagementActivity : AppCompatActivity() {
         val teamed = specialTeammateCount
         val currentRatio = if (together > 0) teamed.toDouble() / together else 0.0
         val delta = SPECIAL_DESIRED_RATIO - currentRatio
-        // If delta > 0 we want more teaming -> reward teaming and penalize not teaming
-        // If delta < 0 we want less teaming -> penalize teaming and reward not teaming
         val sign = if (teammatesNow) -1.0 else 1.0
         return sign * SPECIAL_WEIGHT * delta
     }
 
+    // === Pairing cost & selection ===
+
     private fun pairingCost(teamA: List<Player>, teamB: List<Player>): Double {
-        // Balance by rating
         val avgA = teamA.map { rating(it) }.average()
         val avgB = teamB.map { rating(it) }.average()
         val balanceCost = abs(avgA - avgB)
 
-        // Partner repeat penalties (within teams)
-        val partnerPenalty =
-            getPartnerCount(teamA[0].id, teamA[1].id) +
-                    getPartnerCount(teamB[0].id, teamB[1].id)
+        val partnerPenalty = getPartnerCount(teamA[0].id, teamA[1].id) +
+                getPartnerCount(teamB[0].id, teamB[1].id)
 
-        // Opponent repeat penalties (across teams)
         var opponentPenalty = 0
         for (a in teamA) for (b in teamB) {
             opponentPenalty += getOpponentCount(a.id, b.id)
@@ -485,11 +583,11 @@ class PlayerManagementActivity : AppCompatActivity() {
         require(players.size == 4)
         val (A, B, C, D) = players
 
-        val p1 = Pair(listOf(A, B), listOf(C, D))
-        val p2 = Pair(listOf(A, C), listOf(B, D))
-        val p3 = Pair(listOf(A, D), listOf(B, C))
-
-        val options = listOf(p1, p2, p3)
+        val options = listOf(
+            Pair(listOf(A, B), listOf(C, D)),
+            Pair(listOf(A, C), listOf(B, D)),
+            Pair(listOf(A, D), listOf(B, C))
+        )
 
         var best = options.first()
         var bestCost = pairingCost(best.first, best.second) + specialBiasCost(best.first, best.second, players)
@@ -510,9 +608,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         return chooseBestPairingOfFour(players)
     }
 
-    // ======================
-    // Random selection helpers to avoid contiguous groups
-    // ======================
+    // === Random selection helpers ===
 
     // Pop 'count' random distinct players from a mutable list, removing them.
     private fun popRandom(list: MutableList<Player>, count: Int): List<Player> {
@@ -525,21 +621,29 @@ class PlayerManagementActivity : AppCompatActivity() {
         return picked
     }
 
-    // Draw 'n' players from the first REFILL_WINDOW positions of the resting queue (random within window)
-    private fun drawFromRestingQueue(n: Int): List<Player> {
-        val picked = mutableListOf<Player>()
-        val times = min(n, restingPlayers.size)
-        repeat(times) {
-            val window = min(REFILL_WINDOW, restingPlayers.size)
-            val idx = Random.nextInt(window) // 0..window-1
-            picked += restingPlayers.removeAt(idx)
-        }
+    // Fair draw that prioritizes longest-resting players (FIFO tie-break)
+    private fun drawFairFromRestingQueue(n: Int): List<Player> {
+        if (restingPlayers.isEmpty() || n <= 0) return emptyList()
+
+        // Build (index, player, restCount), stable-sort by restCount desc then by index asc (FIFO)
+        val indexed = restingPlayers.mapIndexed { idx, p -> Triple(idx, p, restCount[p.id] ?: 0) }
+        val sorted = indexed.sortedWith(
+            compareByDescending<Triple<Int, Player, Int>> { it.third }.thenBy { it.first }
+        )
+        val take = sorted.take(min(n, restingPlayers.size))
+        val indicesDesc = take.map { it.first }.sortedDescending()
+
+        // Remove selected from the queue
+        indicesDesc.forEach { restingPlayers.removeAt(it) }
+        val picked = take.map { it.second }
+
+        // They’re now seated; reset their counters
+        picked.forEach { restCount[it.id] = 0 }
+
         return picked
     }
 
-    // ======================
-    // UI: Add Late Players / Edit Court
-    // ======================
+    // === UI: Add Late Players / Edit Court ===
 
     private fun showAddLatePlayerDialog() {
         val activePlayerIds = mutableSetOf<String>()
@@ -578,12 +682,11 @@ class PlayerManagementActivity : AppCompatActivity() {
                 val selectedPlayers = mutableListOf<Player>()
                 for (i in 0 until chipGroup.childCount) {
                     val chip = chipGroup.getChildAt(i) as Chip
-                    if (chip.isChecked) {
-                        selectedPlayers.add(chip.tag as Player)
-                    }
+                    if (chip.isChecked) selectedPlayers.add(chip.tag as Player)
                 }
-
                 if (selectedPlayers.isNotEmpty()) {
+                    // New resters start with restCount = 0
+                    selectedPlayers.forEach { restCount[it.id] = 0 }
                     restingPlayers.addAll(selectedPlayers)
                     updateRestingPlayersView()
                     val playerNames = selectedPlayers.joinToString(", ") { it.name }
@@ -611,7 +714,6 @@ class PlayerManagementActivity : AppCompatActivity() {
     private fun addLatePlayer(playerName: String, onSuccess: () -> Unit) {
         val normalizedName = playerName.lowercase()
         val playerExists = allPlayers.any { it.name.equals(normalizedName, ignoreCase = true) }
-
         if (playerExists) {
             Toast.makeText(this, "$playerName already exists.", Toast.LENGTH_SHORT).show()
             return
@@ -623,6 +725,7 @@ class PlayerManagementActivity : AppCompatActivity() {
                 val playerWithId = newPlayer.copy(id = normalizedName)
                 allPlayers.add(playerWithId)
                 restingPlayers.add(playerWithId)
+                restCount[playerWithId.id] = 0 // join resting with zero rest
                 updateRestingPlayersView()
                 Toast.makeText(this, "$playerName added and is now resting.", Toast.LENGTH_SHORT).show()
                 onSuccess()
@@ -634,7 +737,7 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun addCourt() {
         if (restingPlayers.size >= 4) {
-            val newCourtPlayers = drawFromRestingQueue(4)
+            val newCourtPlayers = drawFairFromRestingQueue(4)
             val newTeams = generateTeamsForCourt(newCourtPlayers)
             val newCourtNumber = (currentCourts.maxOfOrNull { it.courtNumber } ?: 0) + 1
             currentCourts.add(Court(newTeams, newCourtNumber))
@@ -670,7 +773,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         var firstList: MutableList<Player>? = null
         val allAdapters = listOf(adapterA, adapterB, adapterResting)
 
-        fun handleSelection(player: Player, list: MutableList<Player>, clickedAdapter: EditCourtPlayerAdapter) {
+        fun handleSelection(player: Player, list: MutableList<Player>, @Suppress("UNUSED_PARAMETER") clickedAdapter: EditCourtPlayerAdapter) {
             if (firstSelection == null) {
                 firstSelection = player
                 firstList = list
@@ -720,7 +823,11 @@ class PlayerManagementActivity : AppCompatActivity() {
                 } else {
                     null
                 }
+
                 restingPlayers = LinkedList(restingMutable)
+                // Ensure any newly-resting players have a restCount initialized
+                restingPlayers.forEach { p -> restCount.putIfAbsent(p.id, 0) }
+
                 courtAdapter.notifyItemChanged(courtIndex)
                 updateRestingPlayersView()
             }
@@ -733,6 +840,7 @@ class PlayerManagementActivity : AppCompatActivity() {
                 .setMessage("Are you sure you want to delete Court ${court.courtNumber}? All players on this court will be moved to the resting queue.")
                 .setPositiveButton("Delete") { _, _ ->
                     val playersToRest = currentCourts[courtIndex].teams?.toList()?.flatMap { it } ?: emptyList()
+                    playersToRest.forEach { restCount[it.id] = 0 } // just left a game
                     restingPlayers.addAll(playersToRest)
                     currentCourts.removeAt(courtIndex)
                     courtAdapter.notifyDataSetChanged()
@@ -744,5 +852,40 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
 
         mainDialog.show()
+    }
+
+    private fun attachMatchesListener() {
+        val currentSession = sessionId ?: return
+        detachMatchesListener()
+
+        matchesListener = db.collection("users").document(uid)
+            .collection("sessions").document(currentSession)
+            .collection("matches")
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    syncBanner?.apply {
+                        visibility = View.VISIBLE
+                        text = "Sync error: ${err.code}"
+                    }
+                    return@addSnapshotListener
+                }
+                if (snap == null) return@addSnapshotListener
+                val hasPending = snap.metadata.hasPendingWrites()
+                syncBanner?.apply {
+                    visibility = if (hasPending) View.VISIBLE else View.GONE
+                    if (hasPending) text = "Syncing… (offline or pending writes)"
+                }
+            }
+    }
+
+    private fun detachMatchesListener() {
+        matchesListener?.remove()
+        matchesListener = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        detachMatchesListener()
     }
 }
