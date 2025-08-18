@@ -132,19 +132,35 @@ class CourtAdapter(
         }
 
         private fun setPlayerBackground(textView: TextView, player: Player) {
-            Log.d(TAG, "Coloring ${player.name} gp=${player.gamesPlayed} wr=${player.winrate}")
-            val context = textView.context
+            // Compute winrate from wins/games to match the stats modal exactly
+            val wr = if (player.gamesPlayed > 0) {
+                player.wins.toDouble() / player.gamesPlayed.toDouble()
+            } else {
+                0.0
+            }
+            val pct = (wr * 100).toInt()
+            Log.d(TAG, "Coloring ${player.name} gp=${player.gamesPlayed} w=${player.wins} l=${player.losses} wr=$pct%")
+
             val colorRes = if (player.gamesPlayed < MIN_RANKED_GAMES) {
+                // Unranked/TBD: no color
                 android.R.color.transparent
             } else {
+                // Winrate-based bands (not "skill"):
+                // <= 50% → green
+                // 51%–60% → yellow
+                // 61%–75% → orange
+                // >= 76% → red
                 when {
-                    player.winrate >= 0.80 -> R.color.skill_high
-                    player.winrate >= 0.60 -> R.color.skill_medium
-                    player.winrate >= 0.50 -> R.color.skill_low
-                    else -> android.R.color.transparent
+                    wr <= 0.50 -> R.color.skill_green     // new: true green for <=50%
+                    wr <= 0.60 -> R.color.skill_low       // existing: yellow
+                    wr <= 0.75 -> R.color.skill_orange    // new: orange
+                    else -> R.color.skill_high            // existing: red
                 }
             }
-            textView.setBackgroundColor(ContextCompat.getColor(context, colorRes))
+
+            textView.setBackgroundColor(
+                ContextCompat.getColor(textView.context, colorRes)
+            )
         }
     }
 }

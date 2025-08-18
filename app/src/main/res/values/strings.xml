@@ -1,8 +1,8 @@
 <resources>
-    <!-- You can add your app name here if it's not already present -->
+    <!-- Existing -->
     <string name="app_name">Blacksheep</string>
 
-    <!-- Strings for PlayerManagementActivity -->
+    <!-- Strings for PlayerManagementActivity (existing) -->
     <string name="session_setup_title">Session Setup</string>
     <string name="active_courts_title">Active Courts</string>
     <string name="new_player_name_hint">New Player Name</string>
@@ -12,10 +12,76 @@
     <string name="select_players_label">Select Players for this Session:</string>
     <string name="start_session_button">Start Session</string>
 
-    <!-- Strings for Game Action Buttons -->
+    <!-- Strings for Game Action Buttons (existing) -->
     <string name="end_session_button">END SESSION</string>
-    <!-- FIXED: Changed text to be shorter -->
     <string name="add_late_player_button">ADD PLAYER</string>
     <string name="add_court_button">ADD COURT</string>
 
+    <!-- New keys used by PlayerManagementActivity -->
+
+    <!-- General -->
+    <string name="close">Close</string>
+    <string name="cancel">Cancel</string>
+    <string name="done">Done</string>
+    <string name="no_auth_user">No authenticated user. Please login again.</string>
+    <string name="error_generic">Error: %1$s</string>
+
+    <!-- Toolbar / titles -->
+    <string name="session_setup">Session Setup</string>
+    <string name="active_courts">Active Courts</string>
+    <string name="session_stats">Session Stats</string>
+
+    <!-- Buttons (grid) -->
+    <string name="stats_label">STATS</string>
+    <string name="add_player_label">ADD PLAYER</string>
+    <string name="add_court_label">ADD COURT</string>
+    <string name="end_session_label">END SESSION</string>
+
+    <!-- End session dialog -->
+    <string name="end_session">End Session</string>
+    <string name="end_session_message">Are you sure you want to end the current session? All court progress will be lost.</string>
+    <string name="end_session_toast">Session Ended</string>
+
+    <!-- Setup / session start -->
+    <string name="enter_valid_courts">Please enter a valid number of courts.</string>
+    <string name="not_enough_players">Not enough players for %1$d court(s). Need %2$d, selected %3$d.</string>
+
+    <!-- Resting -->
+    <string name="resting_none">Resting: None</string>
+    <string name="resting_prefix">Resting: %1$s</string>
+
+    <!-- Player add / firestore -->
+    <string name="added_player">%1$s added.</string>
+    <string name="player_exists">%1$s already exists.</string>
+    <string name="error_checking_player">Error checking player: %1$s</string>
+    <string name="error_adding_player">Error adding player: %1$s</string>
+    <string name="added_resting">%1$s added and is now resting.</string>
+    <string name="added_to_resting">%1$s added to the resting queue.</string>
+    <string name="player_name_empty">Player name cannot be empty.</string>
+
+    <!-- Add late players dialog -->
+    <string name="add_late_players">Add Late Players</string>
+    <string name="add_selected">Add Selected</string>
+
+    <!-- Court actions -->
+    <string name="court_added">Court %1$d added.</string>
+    <string name="need_four_resting">Need at least 4 resting players to add a new court.</string>
+    <string name="edit_court_title">Edit Court %1$d</string>
+    <string name="delete_court">Delete Court</string>
+    <string name="delete_court_message">Are you sure you want to delete Court %1$d? All players on this court will be moved to the resting queue.</string>
+
+    <!-- Matches / Firestore -->
+    <string name="recorded_winners">Recorded: Court %1$d — Winners: %2$s</string>
+    <string name="failed_to_record">Failed to record match: %1$s</string>
+    <string name="syncing_pending">Syncing… (offline or pending writes)</string>
+    <string name="sync_error">Sync error: %1$s</string>
+
+    <!-- Stats table headers -->
+    <string name="stats_name">Name</string>
+    <string name="stats_current">Current</string>
+    <string name="stats_overall">Overall</string>
+    <string name="stats_g">G</string>
+    <string name="stats_w">W</string>
+    <string name="stats_l">L</string>
+    <string name="stats_win_pct">Win%</string>
 </resources>

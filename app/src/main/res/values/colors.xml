@@ -14,4 +14,7 @@
     <color name="skill_high">#FF453A</color>    <!-- Bright Red (>= 80%) -->
     <color name="skill_medium">#FF9F0A</color>  <!-- Bright Orange (60%-79%) -->
     <color name="skill_low">#FFD60A</color>     <!-- Bright Yellow (50%-59%) -->
+    <color name="skill_orange">#FB8C00</color>
+    <color name="skill_green">#4CAF50</color>   <!-- Green 500 -->
+
 </resources>

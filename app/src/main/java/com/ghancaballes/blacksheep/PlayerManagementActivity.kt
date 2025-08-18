@@ -89,6 +89,12 @@ class PlayerManagementActivity : AppCompatActivity() {
     // Fair-rest scheduling counters (games rested since last play)
     private val restCount = mutableMapOf<String, Int>()
 
+    // NEW: remember the last quartet that played on each court (by courtNumber)
+    private val lastCourtGroupIds = mutableMapOf<Int, Set<String>>()
+
+    // NEW: remember for each player the last 3 others they were grouped with
+    private val lastQuartetByPlayer = mutableMapOf<String, Set<String>>()
+
     // Penalty weights (tunable)
     private val ALPHA_PARTNER = 1.0 // avoid repeat teammates
     private val BETA_OPPONENT = 0.5 // avoid repeat opponents
@@ -96,8 +102,8 @@ class PlayerManagementActivity : AppCompatActivity() {
     // Special rule: bias Chad & Budong to be teammates ~3 out of 5 (60%)
     private val SPECIAL_DESIRED_RATIO = 0.60
     private val SPECIAL_WEIGHT = 2.0 // strength of the bias vs balance/penalties
-    private var specialTogetherCount = 0   // times both Chad and Budong appeared in the same game
-    private var specialTeammateCount = 0   // times they were teammates when together
+    private var specialTogetherCount = 0
+    private var specialTeammateCount = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -147,50 +153,40 @@ class PlayerManagementActivity : AppCompatActivity() {
         rebuildActionButtonsGrid()
     }
 
-    // FULL-BLEED 2x2 grid: no margins/padding between buttons, equal sizes.
-    // Row 1: [STATS]      [ADD PLAYER]
-    // Row 2: [ADD COURT]  [END SESSION]
+    // FULL-BLEED 2x2 grid
     private fun rebuildActionButtonsGrid() {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
 
-        // Remove existing children and padding so buttons go edge-to-edge
         gameActionButtons.removeAllViews()
         gameActionButtons.setPadding(0)
 
-        // Create STATS as MaterialButton so it matches the other buttons visually
-        val statsButton = com.google.android.material.button.MaterialButton(
+        val statsButton = MaterialButton(
             this,
             null,
             com.google.android.material.R.attr.materialButtonStyle
         ).apply {
             text = "STATS"
             isAllCaps = true
-            setOnClickListener { showStatsDialog() } // RESTORED: open stats on click
+            setOnClickListener { showStatsDialog() }
         }
 
-        // Normalize labels for the existing buttons
         addLatePlayerButton.text = "ADD PLAYER"
         addCourtButton.text = "ADD COURT"
         endSessionButton.text = "END SESSION"
 
-        // Apply consistent Material shape/insets to ALL buttons so they look identical
         val minPx = dp(48)
         fun styleUniform(b: View) {
             if (b is TextView) b.isAllCaps = true
             b.minimumHeight = minPx
-            b.setPadding(0) // tighter look, prevents inner gaps
-
-            if (b is com.google.android.material.button.MaterialButton) {
-                // Square corners (no pill)
+            b.setPadding(0)
+            if (b is MaterialButton) {
                 b.shapeAppearanceModel = b.shapeAppearanceModel
                     .toBuilder()
                     .setAllCornerSizes(0f)
                     .build()
-                // Remove vertical insets (top/bottom). Left/right setters not available on your library.
                 b.setInsetTop(0)
                 b.setInsetBottom(0)
-                // Avoid outlines between neighbors
                 b.strokeWidth = 0
                 b.iconPadding = 0
             }
@@ -199,7 +195,6 @@ class PlayerManagementActivity : AppCompatActivity() {
         val allButtons = listOf<View>(statsButton, addLatePlayerButton, addCourtButton, endSessionButton)
         allButtons.forEach { styleUniform(it) }
 
-        // Build a TableLayout with two rows; each cell has weight=1, width=0 for equal widths
         val table = TableLayout(this).apply {
             setPadding(0)
             isShrinkAllColumns = false
@@ -209,7 +204,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         fun makeRow(left: View, right: View): TableRow {
             val row = TableRow(this).apply { setPadding(0) }
             val lp = TableRow.LayoutParams(0, TableRow.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(0, 0, 0, 0) // full-bleed (no gaps)
+                setMargins(0, 0, 0, 0)
             }
             row.addView(left, lp)
             row.addView(right, lp)
@@ -234,7 +229,6 @@ class PlayerManagementActivity : AppCompatActivity() {
             )
         )
 
-        // Add the table into the existing container
         gameActionButtons.addView(
             table,
             LinearLayout.LayoutParams(
@@ -335,6 +329,8 @@ class PlayerManagementActivity : AppCompatActivity() {
         specialTogetherCount = 0
         specialTeammateCount = 0
         restCount.clear()
+        lastCourtGroupIds.clear()
+        lastQuartetByPlayer.clear()
 
         playerSelectionAdapter.notifyDataSetChanged()
         syncBanner?.visibility = View.GONE
@@ -384,18 +380,19 @@ class PlayerManagementActivity : AppCompatActivity() {
             sessionPlayerIds.add(it.id)
             sessionStats[it.id] = SessionStats(0, 0, 0)
         }
+        lastCourtGroupIds.clear()
+        lastQuartetByPlayer.clear()
 
         // Seed courts
         currentCourts.clear()
         for (i in 1..courtCount) {
             if (playerPool.size < 4) break
-            // Pop 4 at random from the pool to avoid contiguous chunks
             val courtPlayers = popRandom(playerPool, 4)
             val teams = generateTeamsForCourt(courtPlayers)
             currentCourts.add(Court(teams, i))
         }
 
-        // Remaining players form the resting queue (already random)
+        // Remaining players form the resting queue
         restingPlayers = LinkedList(playerPool)
 
         switchToGameView()
@@ -419,10 +416,8 @@ class PlayerManagementActivity : AppCompatActivity() {
         val matchRef = matchesRef.document(matchId)
 
         db.runTransaction { tx ->
-            // READS FIRST for idempotency + Firestore constraint
             val matchSnap = tx.get(matchRef)
             if (matchSnap.exists()) {
-                // Already recorded → no-op
                 return@runTransaction null
             }
 
@@ -438,7 +433,6 @@ class PlayerManagementActivity : AppCompatActivity() {
                 }
             }
 
-            // WRITES
             val matchData = mapOf(
                 "sessionId" to currentSession,
                 "matchId" to matchId,
@@ -474,24 +468,19 @@ class PlayerManagementActivity : AppCompatActivity() {
         }.addOnSuccessListener {
             Log.d("PlayerStats", "Match $matchId recorded; player stats updated.")
             val winnerNames = winners.joinToString(", ") { it.name }
-            Toast.makeText(this, "Recorded: Court $courtNumber — Winners: $winnerNames", Toast.LENGTH_SHORT).show()
-
-            // Force rebind of this court row in case the adapter disabled buttons
+            val courtNumber2 = currentCourts.getOrNull(courtIndex)?.courtNumber ?: (courtIndex + 1)
+            Toast.makeText(this, "Recorded: Court $courtNumber2 — Winners: $winnerNames", Toast.LENGTH_SHORT).show()
             courtAdapter.notifyItemChanged(courtIndex)
         }.addOnFailureListener { e ->
             Log.e("PlayerStats", "Failed to record match $matchId.", e)
             Toast.makeText(this, "Failed to record match: ${e.message}", Toast.LENGTH_LONG).show()
-
-            // Rebind the court to re-enable buttons if they were disabled
             courtAdapter.notifyItemChanged(courtIndex)
         }
     }
 
     private fun handleGameFinished(winners: List<Player>, losers: List<Player>, courtIndex: Int) {
-        // Persist (idempotent + offline-safe)
         recordMatchAndUpdatePlayerStats(winners, losers, courtIndex)
 
-        // Update session player set and session stats
         (winners + losers).forEach {
             sessionPlayerIds.add(it.id)
             val s = sessionStats.getOrPut(it.id) { SessionStats() }
@@ -506,28 +495,30 @@ class PlayerManagementActivity : AppCompatActivity() {
             s.losses += 1
         }
 
-        // Legacy counters (not used in pairing cost)
         val winnerKey = winners.map { it.name }.sorted().joinToString("|")
         val loserKey = losers.map { it.name }.sorted().joinToString("|")
         partnershipHistory[winnerKey] = partnershipHistory.getOrDefault(winnerKey, 0) + 1
         partnershipHistory[loserKey] = partnershipHistory.getOrDefault(loserKey, 0) + 1
 
-        // Update in-session pairing memory
         updatePairingStats(winners, losers)
-        updateSpecialPairStats(winners, losers) // track Chad/Budong ratio
+        updateSpecialPairStats(winners, losers)
 
-        // Mark court empty
         currentCourts[courtIndex].teams = null
 
-        // Finished players go to rest with restCount = 0
-        val finishedPlayers = winners + losers
-        finishedPlayers.forEach { restCount[it.id] = 0 }
-        restingPlayers.addAll(finishedPlayers)
+        val courtNumber = currentCourts.getOrNull(courtIndex)?.courtNumber ?: (courtIndex + 1)
+        val lastFour = (winners + losers)
+        lastCourtGroupIds[courtNumber] = lastFour.map { it.id }.toSet()
 
-        // Refill empty courts (prioritize longest-resting first)
+        val idList = lastFour.map { it.id }
+        for (p in lastFour) {
+            lastQuartetByPlayer[p.id] = idList.filter { it != p.id }.toSet()
+        }
+
+        lastFour.forEach { restCount[it.id] = 0 }
+        restingPlayers.addAll(lastFour)
+
         refillEmptyCourts()
 
-        // After refilling, increment rest counters for those STILL resting
         restingPlayers.forEach { p -> restCount[p.id] = (restCount[p.id] ?: 0) + 1 }
 
         updateRestingPlayersView()
@@ -536,7 +527,8 @@ class PlayerManagementActivity : AppCompatActivity() {
     private fun refillEmptyCourts() {
         for (court in currentCourts) {
             if (court.teams == null && restingPlayers.size >= 4) {
-                val newCourtPlayers = drawFairFromRestingQueue(4)
+                val avoid = lastCourtGroupIds[court.courtNumber]
+                val newCourtPlayers = drawFairFromRestingQueueAvoid(4, avoid)
                 court.teams = generateTeamsForCourt(newCourtPlayers)
             }
         }
@@ -601,10 +593,8 @@ class PlayerManagementActivity : AppCompatActivity() {
     }
 
     private fun updatePairingStats(winners: List<Player>, losers: List<Player>) {
-        // Teammate increments
         if (winners.size == 2) incPartnerCountPair(winners[0].id, winners[1].id)
         if (losers.size == 2) incPartnerCountPair(losers[0].id, losers[1].id)
-        // Opponent increments: cross pairs
         for (w in winners) for (l in losers) incOpponentCountPair(w.id, l.id)
     }
 
@@ -684,7 +674,6 @@ class PlayerManagementActivity : AppCompatActivity() {
                 bestCost = cost
             }
         }
-        // Shuffle within each team to avoid positional bias
         return Pair(best.first.shuffled(), best.second.shuffled())
     }
 
@@ -695,7 +684,6 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     // === Random selection helpers ===
 
-    // Pop 'count' random distinct players from a mutable list, removing them.
     private fun popRandom(list: MutableList<Player>, count: Int): List<Player> {
         val c = min(count, list.size)
         val picked = mutableListOf<Player>()
@@ -706,26 +694,311 @@ class PlayerManagementActivity : AppCompatActivity() {
         return picked
     }
 
-    // Fair draw that prioritizes longest-resting players (FIFO tie-break)
+    // Legacy simple fair draw (kept for reference)
     private fun drawFairFromRestingQueue(n: Int): List<Player> {
         if (restingPlayers.isEmpty() || n <= 0) return emptyList()
-
-        // Build (index, player, restCount), stable-sort by restCount desc then by index asc (FIFO)
         val indexed = restingPlayers.mapIndexed { idx, p -> Triple(idx, p, restCount[p.id] ?: 0) }
         val sorted = indexed.sortedWith(
             compareByDescending<Triple<Int, Player, Int>> { it.third }.thenBy { it.first }
         )
         val take = sorted.take(min(n, restingPlayers.size))
         val indicesDesc = take.map { it.first }.sortedDescending()
-
-        // Remove selected from the queue
         indicesDesc.forEach { restingPlayers.removeAt(it) }
         val picked = take.map { it.second }
-
-        // They’re now seated; reset their counters
         picked.forEach { restCount[it.id] = 0 }
-
         return picked
+    }
+
+    // Fair draw with anti-repeat and randomized tie-breaks
+    private fun drawFairFromRestingQueueAvoid(n: Int, avoidGroup: Set<String>?): List<Player> {
+        if (restingPlayers.isEmpty() || n <= 0) return emptyList()
+
+        val indexed = restingPlayers.mapIndexed { idx, p -> Triple(idx, p, restCount[p.id] ?: 0) }
+        val withRest = indexed.filter { it.third > 0 }
+        val basePool = if (withRest.size >= n) withRest else indexed
+
+        val pre = basePool.shuffled()
+        val sorted = pre.sortedWith(compareByDescending<Triple<Int, Player, Int>> { it.third })
+
+        val K = min(8, sorted.size)
+        val cands = sorted.take(K)
+
+        var best: List<Triple<Int, Player, Int>>? = null
+        var bestScore = -1
+
+        val S = cands.size
+        if (S >= n) {
+            for (i in 0 until S - 3) {
+                for (j in i + 1 until S - 2) {
+                    for (k in j + 1 until S - 1) {
+                        for (l in k + 1 until S) {
+                            val picks = listOf(cands[i], cands[j], cands[k], cands[l])
+                            val idsSet = picks.map { it.second.id }.toSet()
+
+                            if (avoidGroup != null && idsSet == avoidGroup) continue
+
+                            var ok = true
+                            for (t in picks) {
+                                val pid = t.second.id
+                                val last = lastQuartetByPlayer[pid]
+                                if (last != null) {
+                                    val others = idsSet - pid
+                                    if (others == last) {
+                                        ok = false
+                                        break
+                                    }
+                                }
+                            }
+                            if (!ok) continue
+
+                            val score = picks.sumOf { it.third }
+                            if (score > bestScore) {
+                                best = picks
+                                bestScore = score
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val pickedTriples = when {
+            best != null -> best!!
+            else -> {
+                val tmp = sorted.take(min(n, sorted.size)).toMutableList()
+                if (avoidGroup != null && tmp.map { it.second.id }.toSet() == avoidGroup) {
+                    val replacement = sorted.drop(tmp.size).firstOrNull { it.second.id !in avoidGroup }
+                    if (replacement != null) tmp[0] = replacement
+                    else {
+                        val swapCandidate = sorted.firstOrNull { it.second.id !in avoidGroup }
+                        if (swapCandidate != null) tmp[0] = swapCandidate
+                    }
+                }
+                tmp
+            }
+        }
+
+        val indicesDesc = pickedTriples.map { it.first }.sortedDescending()
+        indicesDesc.forEach { restingPlayers.removeAt(it) }
+
+        val picked = pickedTriples.map { it.second }
+        picked.forEach { restCount[it.id] = 0 }
+        return picked
+    }
+
+    // =========================
+    // Stats modal (TABLE: Current vs Overall)
+    // =========================
+
+    private data class StatsRow(
+        val name: String,
+        val currentG: Int, val currentW: Int, val currentL: Int,
+        val overallG: Int, val overallW: Int, val overallL: Int,
+        val overallWinPct: Int // 0..100 rounded
+    )
+
+    private fun buildStatsRows(): List<StatsRow> {
+        val byId = allPlayers.associateBy { it.id }
+
+        return sessionPlayerIds.mapNotNull { id ->
+            val p = byId[id] ?: return@mapNotNull null
+            val cur = sessionStats[id] ?: SessionStats(0, 0, 0)
+            val overallG = p.gamesPlayed
+            val overallW = p.wins
+            val overallL = p.losses
+            val pct = if (overallG > 0) ((overallW.toDouble() / overallG) * 100).toInt() else 0
+            StatsRow(
+                name = p.name,
+                currentG = cur.games, currentW = cur.wins, currentL = cur.losses,
+                overallG = overallG, overallW = overallW, overallL = overallL,
+                overallWinPct = pct
+            )
+        }.sortedBy { it.name.lowercase() }
+    }
+
+    private fun showStatsDialog() {
+        val rows = buildStatsRows()
+
+        // Horizontal scroll for columns, vertical scroll for rows
+        val hScroll = HorizontalScrollView(this)
+        val vScroll = ScrollView(this).apply { isFillViewport = true }
+
+        val table = buildStatsTable(rows)
+
+        val vLp = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        vScroll.addView(table, vLp)
+
+        val hLp = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        hScroll.addView(vScroll, hLp)
+
+        AlertDialog.Builder(this)
+            .setTitle("Session Stats")
+            .setView(hScroll)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
+    private fun buildStatsTable(rows: List<StatsRow>): TableLayout {
+        val density = resources.displayMetrics.density
+        fun dp(px: Int) = (px * density).toInt()
+
+        // Approximate width for up to 12 characters at 13sp (includes padding headroom)
+        val NAME_COL_WIDTH_DP = 112
+
+        fun headerCell(
+            text: String,
+            span: Int = 1,
+            center: Boolean = true,
+            bold: Boolean = true,
+            sizeSp: Float = 13f
+        ): TextView {
+            return TextView(this).apply {
+                this.text = text
+                textSize = sizeSp
+                if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                gravity = if (center) android.view.Gravity.CENTER else android.view.Gravity.START
+            }.also {
+                val lp = TableRow.LayoutParams(
+                    TableRow.LayoutParams.WRAP_CONTENT,
+                    TableRow.LayoutParams.WRAP_CONTENT
+                )
+                lp.span = span
+                it.layoutParams = lp
+            }
+        }
+
+        // Header cell for Name with fixed width to align the column
+        fun headerNameCell(text: String): TextView {
+            return TextView(this).apply {
+                this.text = text
+                textSize = 13f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                gravity = android.view.Gravity.START
+                minWidth = dp(NAME_COL_WIDTH_DP)
+                maxWidth = dp(NAME_COL_WIDTH_DP)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+        }
+
+        fun bodyCell(text: String, center: Boolean = true): TextView {
+            return TextView(this).apply {
+                this.text = text
+                textSize = 13f
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                gravity = if (center) android.view.Gravity.CENTER else android.view.Gravity.START
+            }
+        }
+
+        // Body cell for Name with same fixed width as header
+        fun nameCell(text: String): TextView {
+            return TextView(this).apply {
+                this.text = text
+                textSize = 13f
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                gravity = android.view.Gravity.START
+                minWidth = dp(NAME_COL_WIDTH_DP)
+                maxWidth = dp(NAME_COL_WIDTH_DP)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+        }
+
+        // Thin vertical separator
+        fun vSep(): View {
+            return View(this).apply {
+                layoutParams = TableRow.LayoutParams(dp(1), TableRow.LayoutParams.MATCH_PARENT).apply {
+                    setMargins(0, dp(2), 0, dp(2))
+                }
+                setBackgroundColor(0xFFDDDDDD.toInt()) // light gray
+            }
+        }
+
+        val table = TableLayout(this).apply {
+            setPadding(dp(4))
+            isShrinkAllColumns = false
+            isStretchAllColumns = false
+        }
+
+        // Header Row 1: Name | | Current(3) | | Overall(4)
+        val hdr1 = TableRow(this).apply { setPadding(0) }
+        hdr1.addView(headerNameCell("Name"))
+        hdr1.addView(vSep())
+        hdr1.addView(headerCell("Current", span = 3))
+        hdr1.addView(vSep())
+        hdr1.addView(headerCell("Overall", span = 4))
+        table.addView(hdr1)
+
+        // Header Row 2: "" | | G W L | | G W L Win%
+        val hdr2 = TableRow(this).apply { setPadding(0) }
+        // Keep first empty header cell; the Name column width is enforced by headerNameCell above
+        hdr2.addView(headerCell("", span = 1, center = false, bold = false))
+        hdr2.addView(vSep())
+        listOf("G", "W", "L").forEach { hdr2.addView(headerCell(it)) }
+        hdr2.addView(vSep())
+        listOf("G", "W", "L", "Win%").forEach { hdr2.addView(headerCell(it)) }
+        table.addView(hdr2)
+
+        // Body rows
+        rows.forEach { r ->
+            val tr = TableRow(this).apply { setPadding(0) }
+            tr.addView(nameCell(r.name))
+            tr.addView(vSep())
+            tr.addView(bodyCell(r.currentG.toString()))
+            tr.addView(bodyCell(r.currentW.toString()))
+            tr.addView(bodyCell(r.currentL.toString()))
+            tr.addView(vSep())
+            tr.addView(bodyCell(r.overallG.toString()))
+            tr.addView(bodyCell(r.overallW.toString()))
+            tr.addView(bodyCell(r.overallL.toString()))
+            tr.addView(bodyCell("${r.overallWinPct}%"))
+            table.addView(tr)
+        }
+
+        return table
+    }
+
+    private fun attachMatchesListener() {
+        val currentSession = sessionId ?: return
+        detachMatchesListener()
+
+        matchesListener = db.collection("users").document(uid)
+            .collection("sessions").document(currentSession)
+            .collection("matches")
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    syncBanner?.apply {
+                        visibility = View.VISIBLE
+                        text = "Sync error: ${err.code}"
+                    }
+                    return@addSnapshotListener
+                }
+                if (snap == null) return@addSnapshotListener
+                val hasPending = snap.metadata.hasPendingWrites()
+                syncBanner?.apply {
+                    visibility = if (hasPending) View.VISIBLE else View.GONE
+                    if (hasPending) text = "Syncing… (offline or pending writes)"
+                }
+            }
+    }
+
+    private fun detachMatchesListener() {
+        matchesListener?.remove()
+        matchesListener = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        detachMatchesListener()
     }
 
     // === UI: Add Late Players / Edit Court ===
@@ -770,7 +1043,6 @@ class PlayerManagementActivity : AppCompatActivity() {
                     if (chip.isChecked) selectedPlayers.add(chip.tag as Player)
                 }
                 if (selectedPlayers.isNotEmpty()) {
-                    // New resters start with restCount = 0, and join session set/stats
                     selectedPlayers.forEach {
                         restCount[it.id] = 0
                         sessionPlayerIds.add(it.id)
@@ -814,7 +1086,6 @@ class PlayerManagementActivity : AppCompatActivity() {
                 val playerWithId = newPlayer.copy(id = normalizedName)
                 allPlayers.add(playerWithId)
 
-                // Join current session
                 restingPlayers.add(playerWithId)
                 restCount[playerWithId.id] = 0
                 sessionPlayerIds.add(playerWithId.id)
@@ -831,7 +1102,7 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun addCourt() {
         if (restingPlayers.size >= 4) {
-            val newCourtPlayers = drawFairFromRestingQueue(4)
+            val newCourtPlayers = drawFairFromRestingQueueAvoid(4, avoidGroup = null)
             val newTeams = generateTeamsForCourt(newCourtPlayers)
             val newCourtNumber = (currentCourts.maxOfOrNull { it.courtNumber } ?: 0) + 1
             currentCourts.add(Court(newTeams, newCourtNumber))
@@ -919,7 +1190,6 @@ class PlayerManagementActivity : AppCompatActivity() {
                 }
 
                 restingPlayers = LinkedList(restingMutable)
-                // Ensure any newly-resting players have a restCount initialized
                 restingPlayers.forEach { p ->
                     restCount.putIfAbsent(p.id, 0)
                     sessionPlayerIds.add(p.id)
@@ -939,7 +1209,7 @@ class PlayerManagementActivity : AppCompatActivity() {
                 .setPositiveButton("Delete") { _, _ ->
                     val playersToRest = currentCourts[courtIndex].teams?.toList()?.flatMap { it } ?: emptyList()
                     playersToRest.forEach {
-                        restCount[it.id] = 0 // just left a game
+                        restCount[it.id] = 0
                         sessionPlayerIds.add(it.id)
                         sessionStats.putIfAbsent(it.id, SessionStats())
                     }
@@ -954,244 +1224,5 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
 
         mainDialog.show()
-    }
-
-    private fun attachMatchesListener() {
-        val currentSession = sessionId ?: return
-        detachMatchesListener()
-
-        matchesListener = db.collection("users").document(uid)
-            .collection("sessions").document(currentSession)
-            .collection("matches")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snap, err ->
-                if (err != null) {
-                    syncBanner?.apply {
-                        visibility = View.VISIBLE
-                        text = "Sync error: ${err.code}"
-                    }
-                    return@addSnapshotListener
-                }
-                if (snap == null) return@addSnapshotListener
-                val hasPending = snap.metadata.hasPendingWrites()
-                syncBanner?.apply {
-                    visibility = if (hasPending) View.VISIBLE else View.GONE
-                    if (hasPending) text = "Syncing… (offline or pending writes)"
-                }
-            }
-    }
-
-    private fun detachMatchesListener() {
-        matchesListener?.remove()
-        matchesListener = null
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        detachMatchesListener()
-    }
-
-    // =========================
-    // Stats modal
-    // =========================
-
-    private data class StatsRow(
-        val name: String,
-        val currentG: Int, val currentW: Int, val currentL: Int,
-        val overallG: Int, val overallW: Int, val overallL: Int,
-        val overallWinPct: Int // 0..100 rounded
-    )
-
-    private fun buildStatsRows(): List<StatsRow> {
-        // Build a quick lookup by id
-        val byId = allPlayers.associateBy { it.id }
-
-        val rows = sessionPlayerIds.mapNotNull { id ->
-            val p = byId[id] ?: return@mapNotNull null
-            val cur = sessionStats[id] ?: SessionStats(0, 0, 0)
-            val overallG = p.gamesPlayed
-            val overallW = p.wins
-            val overallL = p.losses
-            val pct = if (overallG > 0) ((overallW.toDouble() / overallG) * 100).toInt() else 0
-            StatsRow(
-                name = p.name,
-                currentG = cur.games, currentW = cur.wins, currentL = cur.losses,
-                overallG = overallG, overallW = overallW, overallL = overallL,
-                overallWinPct = pct
-            )
-        }.sortedBy { it.name.lowercase() }
-        return rows
-    }
-
-    private fun showStatsDialog() {
-        val rows = buildStatsRows()
-
-        // Horizontal scroll for columns, vertical scroll for rows.
-        val hScroll = android.widget.HorizontalScrollView(this)
-        val vScroll = android.widget.ScrollView(this).apply { isFillViewport = true }
-
-        val table = buildStatsTable(rows)
-
-        // ScrollView extends FrameLayout → child uses FrameLayout.LayoutParams
-        val vLp = android.widget.FrameLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        vScroll.addView(table, vLp)
-
-        // HorizontalScrollView also extends FrameLayout → use FrameLayout.LayoutParams here too
-        val hLp = android.widget.FrameLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        hScroll.addView(vScroll, hLp)
-
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Session Stats")
-            .setView(hScroll)
-            .setPositiveButton("Close", null)
-            .show()
-    }
-
-    private fun buildStatsTable(rows: List<StatsRow>): android.widget.TableLayout {
-        val density = resources.displayMetrics.density
-        fun dp(px: Int) = (px * density).toInt()
-
-        fun headerCell(
-            text: String,
-            span: Int = 1,
-            center: Boolean = true,
-            bold: Boolean = true,
-            sizeSp: Float = 13f
-        ): android.widget.TextView {
-            return android.widget.TextView(this).apply {
-                this.text = text
-                textSize = sizeSp
-                if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
-                gravity = if (center) android.view.Gravity.CENTER else android.view.Gravity.START
-                setSingleLine(true)
-                includeFontPadding = false
-                setPadding(dp(4), dp(2), dp(4), dp(2))
-                layoutParams = android.widget.TableRow.LayoutParams(
-                    android.widget.TableRow.LayoutParams.WRAP_CONTENT,
-                    android.widget.TableRow.LayoutParams.WRAP_CONTENT
-                ).apply { this.span = span }
-            }
-        }
-
-        fun textCell(
-            text: String,
-            span: Int = 1,
-            center: Boolean = true,
-            mono: Boolean = true,
-            sizeSp: Float = 12f,
-            minEms: Int = 2
-        ): android.widget.TextView {
-            return android.widget.TextView(this).apply {
-                this.text = text
-                textSize = sizeSp
-                if (mono) typeface = android.graphics.Typeface.MONOSPACE
-                gravity = if (center) android.view.Gravity.CENTER else android.view.Gravity.START
-                setSingleLine(true)
-                includeFontPadding = false
-                setEms(minEms)
-                setPadding(dp(4), dp(6), dp(4), dp(6))
-                layoutParams = android.widget.TableRow.LayoutParams(
-                    android.widget.TableRow.LayoutParams.WRAP_CONTENT,
-                    android.widget.TableRow.LayoutParams.WRAP_CONTENT
-                ).apply { this.span = span }
-            }
-        }
-
-        // 1dp vertical divider used as its own column
-        fun vDividerCell(): android.view.View {
-            return android.view.View(this).apply {
-                setBackgroundColor(0xFFCCCCCC.toInt())
-                layoutParams = android.widget.TableRow.LayoutParams(
-                    dp(1), // width
-                    android.widget.TableRow.LayoutParams.MATCH_PARENT // height
-                ).apply {
-                    // a little vertical margin so it doesn't touch text
-                    setMargins(dp(6), dp(2), dp(6), dp(2))
-                }
-            }
-        }
-
-        fun dividerRow(totalSpan: Int): android.widget.TableRow {
-            val tr = android.widget.TableRow(this)
-            val v = android.view.View(this).apply {
-                layoutParams = android.widget.TableRow.LayoutParams(
-                    android.widget.TableRow.LayoutParams.MATCH_PARENT,
-                    dp(1)
-                ).apply { span = totalSpan }
-                setBackgroundColor(0xFFDDDDDD.toInt())
-            }
-            tr.addView(v)
-            return tr
-        }
-
-        // Total logical columns with vertical divider as its own column:
-        // 1 (Name) + 3 (Current) + 1 (|) + 4 (Overall) = 9
-        val totalSpan = 9
-
-        val table = android.widget.TableLayout(this).apply {
-            isShrinkAllColumns = false
-            isStretchAllColumns = false
-            setPadding(dp(12), dp(4), dp(12), dp(4))
-        }
-
-        // Header row 1: Name | Current | | | Overall
-        val header1 = android.widget.TableRow(this).apply {
-            addView(headerCell("Name", span = 1, center = false, bold = true))
-            addView(headerCell("Current", span = 3, center = true, bold = true))
-            addView(vDividerCell()) // vertical divider column
-            addView(headerCell("Overall", span = 4, center = true, bold = true))
-        }
-        table.addView(header1)
-
-        // Header row 2: (under Name) | G W L | | | G W L Win%
-        val header2 = android.widget.TableRow(this).apply {
-            addView(headerCell("", span = 1, center = false, bold = false))
-            addView(headerCell("G"))
-            addView(headerCell("W"))
-            addView(headerCell("L"))
-            addView(vDividerCell()) // vertical divider column
-            addView(headerCell("G"))
-            addView(headerCell("W"))
-            addView(headerCell("L"))
-            addView(headerCell("Win%"))
-        }
-        table.addView(header2)
-        table.addView(dividerRow(totalSpan))
-
-        // Data rows: Name | cur G W L | | | overall G W L Win%
-        rows.forEach { r ->
-            val tr = android.widget.TableRow(this).apply {
-                addView(
-                    textCell(
-                        r.name,
-                        span = 1,
-                        center = false,
-                        mono = false,
-                        sizeSp = 12f,
-                        minEms = 8
-                    )
-                )
-                // Current
-                addView(textCell(r.currentG.toString()))
-                addView(textCell(r.currentW.toString()))
-                addView(textCell(r.currentL.toString()))
-                // Divider
-                addView(vDividerCell())
-                // Overall
-                addView(textCell(r.overallG.toString()))
-                addView(textCell(r.overallW.toString()))
-                addView(textCell(r.overallL.toString()))
-                addView(textCell("${r.overallWinPct}%"))
-            }
-            table.addView(tr)
-        }
-
-        return table
     }
 }
