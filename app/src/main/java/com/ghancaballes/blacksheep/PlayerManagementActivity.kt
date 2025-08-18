@@ -3,11 +3,14 @@ package com.ghancaballes.blacksheep
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.setPadding
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.firebase.auth.FirebaseAuth
@@ -25,6 +28,7 @@ import kotlin.math.abs
 import kotlin.math.min
 import kotlin.random.Random
 import java.util.LinkedList
+import java.util.LinkedHashSet
 
 class PlayerManagementActivity : AppCompatActivity() {
 
@@ -67,7 +71,14 @@ class PlayerManagementActivity : AppCompatActivity() {
     private val currentCourts = mutableListOf<Court>()
     private var restingPlayers = LinkedList<Player>()
 
-    // Shuffling memory
+    // Active players in this session (for stats/ordering)
+    private val sessionPlayerIds = LinkedHashSet<String>()
+
+    // In-session per-player stats for CURRENT session only
+    data class SessionStats(var games: Int = 0, var wins: Int = 0, var losses: Int = 0)
+    private val sessionStats = mutableMapOf<String, SessionStats>()
+
+    // Shuffling memory (legacy helpers + counters)
     private val partnershipHistory = mutableMapOf<String, Int>() // legacy, not used in cost
     private val recentOpponents = mutableMapOf<String, Set<String>>() // reserved for future use
 
@@ -131,6 +142,106 @@ class PlayerManagementActivity : AppCompatActivity() {
 
         playersRecyclerView.layoutManager = LinearLayoutManager(this)
         courtsRecyclerView.layoutManager = LinearLayoutManager(this)
+
+        // Build the 2x2 full-bleed action grid
+        rebuildActionButtonsGrid()
+    }
+
+    // FULL-BLEED 2x2 grid: no margins/padding between buttons, equal sizes.
+    // Row 1: [STATS]      [ADD PLAYER]
+    // Row 2: [ADD COURT]  [END SESSION]
+    private fun rebuildActionButtonsGrid() {
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+
+        // Remove existing children and padding so buttons go edge-to-edge
+        gameActionButtons.removeAllViews()
+        gameActionButtons.setPadding(0)
+
+        // Create STATS as MaterialButton so it matches the other buttons visually
+        val statsButton = com.google.android.material.button.MaterialButton(
+            this,
+            null,
+            com.google.android.material.R.attr.materialButtonStyle
+        ).apply {
+            text = "STATS"
+            isAllCaps = true
+            setOnClickListener { showStatsDialog() } // RESTORED: open stats on click
+        }
+
+        // Normalize labels for the existing buttons
+        addLatePlayerButton.text = "ADD PLAYER"
+        addCourtButton.text = "ADD COURT"
+        endSessionButton.text = "END SESSION"
+
+        // Apply consistent Material shape/insets to ALL buttons so they look identical
+        val minPx = dp(48)
+        fun styleUniform(b: View) {
+            if (b is TextView) b.isAllCaps = true
+            b.minimumHeight = minPx
+            b.setPadding(0) // tighter look, prevents inner gaps
+
+            if (b is com.google.android.material.button.MaterialButton) {
+                // Square corners (no pill)
+                b.shapeAppearanceModel = b.shapeAppearanceModel
+                    .toBuilder()
+                    .setAllCornerSizes(0f)
+                    .build()
+                // Remove vertical insets (top/bottom). Left/right setters not available on your library.
+                b.setInsetTop(0)
+                b.setInsetBottom(0)
+                // Avoid outlines between neighbors
+                b.strokeWidth = 0
+                b.iconPadding = 0
+            }
+        }
+
+        val allButtons = listOf<View>(statsButton, addLatePlayerButton, addCourtButton, endSessionButton)
+        allButtons.forEach { styleUniform(it) }
+
+        // Build a TableLayout with two rows; each cell has weight=1, width=0 for equal widths
+        val table = TableLayout(this).apply {
+            setPadding(0)
+            isShrinkAllColumns = false
+            isStretchAllColumns = false
+        }
+
+        fun makeRow(left: View, right: View): TableRow {
+            val row = TableRow(this).apply { setPadding(0) }
+            val lp = TableRow.LayoutParams(0, TableRow.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, 0, 0) // full-bleed (no gaps)
+            }
+            row.addView(left, lp)
+            row.addView(right, lp)
+            return row
+        }
+
+        val row1 = makeRow(statsButton, addLatePlayerButton)
+        val row2 = makeRow(addCourtButton, endSessionButton)
+
+        table.addView(
+            row1,
+            TableLayout.LayoutParams(
+                TableLayout.LayoutParams.MATCH_PARENT,
+                TableLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        table.addView(
+            row2,
+            TableLayout.LayoutParams(
+                TableLayout.LayoutParams.MATCH_PARENT,
+                TableLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        // Add the table into the existing container
+        gameActionButtons.addView(
+            table,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 0) }
+        )
     }
 
     private fun initializeAdapters() {
@@ -215,6 +326,8 @@ class PlayerManagementActivity : AppCompatActivity() {
         currentCourts.clear()
         restingPlayers.clear()
         initialSelectedPlayers.clear()
+        sessionPlayerIds.clear()
+        sessionStats.clear()
         partnershipHistory.clear()
         recentOpponents.clear()
         partnerCount.clear()
@@ -262,9 +375,15 @@ class PlayerManagementActivity : AppCompatActivity() {
         // Start with a random order
         val playerPool = playersForSession.shuffled().toMutableList()
 
-        // Initialize rest counters for all selected players
+        // Initialize rest counters and session stats for all selected players
         restCount.clear()
-        playersForSession.forEach { restCount[it.id] = 0 }
+        sessionPlayerIds.clear()
+        sessionStats.clear()
+        playersForSession.forEach {
+            restCount[it.id] = 0
+            sessionPlayerIds.add(it.id)
+            sessionStats[it.id] = SessionStats(0, 0, 0)
+        }
 
         // Seed courts
         currentCourts.clear()
@@ -280,55 +399,6 @@ class PlayerManagementActivity : AppCompatActivity() {
         restingPlayers = LinkedList(playerPool)
 
         switchToGameView()
-    }
-
-    // Optional legacy function (not used when recordMatchAndUpdatePlayerStats is present)
-    private fun updatePlayerStats(winners: List<Player>, losers: List<Player>) {
-        db.runTransaction { transaction ->
-            val allGamePlayers = winners + losers
-            val snapshots = mutableMapOf<String, DocumentSnapshot>()
-
-            for (player in allGamePlayers) {
-                val playerDocRef = playersCollection.document(player.id)
-                snapshots[player.id] = transaction.get(playerDocRef)
-            }
-
-            for (player in allGamePlayers) {
-                val snapshot = snapshots[player.id]
-                if (snapshot == null || !snapshot.exists()) {
-                    throw Exception("Document for player ${player.name} with ID ${player.id} does not exist!")
-                }
-
-                val currentWins = snapshot.getLong("wins") ?: 0L
-                val currentLosses = snapshot.getLong("losses") ?: 0L
-
-                var newWins = currentWins
-                var newLosses = currentLosses
-
-                if (winners.any { it.id == player.id }) {
-                    newWins++
-                } else {
-                    newLosses++
-                }
-
-                val newGamesPlayed = newWins + newLosses
-                val newWinRate = if (newGamesPlayed > 0) newWins.toDouble() / newGamesPlayed else 0.0
-
-                val updates = mapOf(
-                    "wins" to newWins,
-                    "losses" to newLosses,
-                    "gamesPlayed" to newGamesPlayed,
-                    "winrate" to newWinRate
-                )
-                transaction.update(snapshot.reference, updates)
-            }
-            null
-        }.addOnSuccessListener {
-            Log.d("PlayerStats", "Transaction successful: Player stats updated.")
-        }.addOnFailureListener { e ->
-            Log.e("PlayerStats", "Transaction failed.", e)
-            Toast.makeText(this, "Failed to update player stats: ${e.message}", Toast.LENGTH_LONG).show()
-        }
     }
 
     // Idempotent, read-before-write match recording with success toast
@@ -420,6 +490,21 @@ class PlayerManagementActivity : AppCompatActivity() {
     private fun handleGameFinished(winners: List<Player>, losers: List<Player>, courtIndex: Int) {
         // Persist (idempotent + offline-safe)
         recordMatchAndUpdatePlayerStats(winners, losers, courtIndex)
+
+        // Update session player set and session stats
+        (winners + losers).forEach {
+            sessionPlayerIds.add(it.id)
+            val s = sessionStats.getOrPut(it.id) { SessionStats() }
+            s.games += 1
+        }
+        winners.forEach {
+            val s = sessionStats.getOrPut(it.id) { SessionStats() }
+            s.wins += 1
+        }
+        losers.forEach {
+            val s = sessionStats.getOrPut(it.id) { SessionStats() }
+            s.losses += 1
+        }
 
         // Legacy counters (not used in pairing cost)
         val winnerKey = winners.map { it.name }.sorted().joinToString("|")
@@ -685,8 +770,12 @@ class PlayerManagementActivity : AppCompatActivity() {
                     if (chip.isChecked) selectedPlayers.add(chip.tag as Player)
                 }
                 if (selectedPlayers.isNotEmpty()) {
-                    // New resters start with restCount = 0
-                    selectedPlayers.forEach { restCount[it.id] = 0 }
+                    // New resters start with restCount = 0, and join session set/stats
+                    selectedPlayers.forEach {
+                        restCount[it.id] = 0
+                        sessionPlayerIds.add(it.id)
+                        sessionStats.putIfAbsent(it.id, SessionStats())
+                    }
                     restingPlayers.addAll(selectedPlayers)
                     updateRestingPlayersView()
                     val playerNames = selectedPlayers.joinToString(", ") { it.name }
@@ -724,8 +813,13 @@ class PlayerManagementActivity : AppCompatActivity() {
             .addOnSuccessListener {
                 val playerWithId = newPlayer.copy(id = normalizedName)
                 allPlayers.add(playerWithId)
+
+                // Join current session
                 restingPlayers.add(playerWithId)
-                restCount[playerWithId.id] = 0 // join resting with zero rest
+                restCount[playerWithId.id] = 0
+                sessionPlayerIds.add(playerWithId.id)
+                sessionStats.putIfAbsent(playerWithId.id, SessionStats())
+
                 updateRestingPlayersView()
                 Toast.makeText(this, "$playerName added and is now resting.", Toast.LENGTH_SHORT).show()
                 onSuccess()
@@ -826,7 +920,11 @@ class PlayerManagementActivity : AppCompatActivity() {
 
                 restingPlayers = LinkedList(restingMutable)
                 // Ensure any newly-resting players have a restCount initialized
-                restingPlayers.forEach { p -> restCount.putIfAbsent(p.id, 0) }
+                restingPlayers.forEach { p ->
+                    restCount.putIfAbsent(p.id, 0)
+                    sessionPlayerIds.add(p.id)
+                    sessionStats.putIfAbsent(p.id, SessionStats())
+                }
 
                 courtAdapter.notifyItemChanged(courtIndex)
                 updateRestingPlayersView()
@@ -840,7 +938,11 @@ class PlayerManagementActivity : AppCompatActivity() {
                 .setMessage("Are you sure you want to delete Court ${court.courtNumber}? All players on this court will be moved to the resting queue.")
                 .setPositiveButton("Delete") { _, _ ->
                     val playersToRest = currentCourts[courtIndex].teams?.toList()?.flatMap { it } ?: emptyList()
-                    playersToRest.forEach { restCount[it.id] = 0 } // just left a game
+                    playersToRest.forEach {
+                        restCount[it.id] = 0 // just left a game
+                        sessionPlayerIds.add(it.id)
+                        sessionStats.putIfAbsent(it.id, SessionStats())
+                    }
                     restingPlayers.addAll(playersToRest)
                     currentCourts.removeAt(courtIndex)
                     courtAdapter.notifyDataSetChanged()
@@ -887,5 +989,209 @@ class PlayerManagementActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         detachMatchesListener()
+    }
+
+    // =========================
+    // Stats modal
+    // =========================
+
+    private data class StatsRow(
+        val name: String,
+        val currentG: Int, val currentW: Int, val currentL: Int,
+        val overallG: Int, val overallW: Int, val overallL: Int,
+        val overallWinPct: Int // 0..100 rounded
+    )
+
+    private fun buildStatsRows(): List<StatsRow> {
+        // Build a quick lookup by id
+        val byId = allPlayers.associateBy { it.id }
+
+        val rows = sessionPlayerIds.mapNotNull { id ->
+            val p = byId[id] ?: return@mapNotNull null
+            val cur = sessionStats[id] ?: SessionStats(0, 0, 0)
+            val overallG = p.gamesPlayed
+            val overallW = p.wins
+            val overallL = p.losses
+            val pct = if (overallG > 0) ((overallW.toDouble() / overallG) * 100).toInt() else 0
+            StatsRow(
+                name = p.name,
+                currentG = cur.games, currentW = cur.wins, currentL = cur.losses,
+                overallG = overallG, overallW = overallW, overallL = overallL,
+                overallWinPct = pct
+            )
+        }.sortedBy { it.name.lowercase() }
+        return rows
+    }
+
+    private fun showStatsDialog() {
+        val rows = buildStatsRows()
+
+        // Horizontal scroll for columns, vertical scroll for rows.
+        val hScroll = android.widget.HorizontalScrollView(this)
+        val vScroll = android.widget.ScrollView(this).apply { isFillViewport = true }
+
+        val table = buildStatsTable(rows)
+
+        // ScrollView extends FrameLayout → child uses FrameLayout.LayoutParams
+        val vLp = android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        vScroll.addView(table, vLp)
+
+        // HorizontalScrollView also extends FrameLayout → use FrameLayout.LayoutParams here too
+        val hLp = android.widget.FrameLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        hScroll.addView(vScroll, hLp)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Session Stats")
+            .setView(hScroll)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
+    private fun buildStatsTable(rows: List<StatsRow>): android.widget.TableLayout {
+        val density = resources.displayMetrics.density
+        fun dp(px: Int) = (px * density).toInt()
+
+        fun headerCell(
+            text: String,
+            span: Int = 1,
+            center: Boolean = true,
+            bold: Boolean = true,
+            sizeSp: Float = 13f
+        ): android.widget.TextView {
+            return android.widget.TextView(this).apply {
+                this.text = text
+                textSize = sizeSp
+                if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+                gravity = if (center) android.view.Gravity.CENTER else android.view.Gravity.START
+                setSingleLine(true)
+                includeFontPadding = false
+                setPadding(dp(4), dp(2), dp(4), dp(2))
+                layoutParams = android.widget.TableRow.LayoutParams(
+                    android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                    android.widget.TableRow.LayoutParams.WRAP_CONTENT
+                ).apply { this.span = span }
+            }
+        }
+
+        fun textCell(
+            text: String,
+            span: Int = 1,
+            center: Boolean = true,
+            mono: Boolean = true,
+            sizeSp: Float = 12f,
+            minEms: Int = 2
+        ): android.widget.TextView {
+            return android.widget.TextView(this).apply {
+                this.text = text
+                textSize = sizeSp
+                if (mono) typeface = android.graphics.Typeface.MONOSPACE
+                gravity = if (center) android.view.Gravity.CENTER else android.view.Gravity.START
+                setSingleLine(true)
+                includeFontPadding = false
+                setEms(minEms)
+                setPadding(dp(4), dp(6), dp(4), dp(6))
+                layoutParams = android.widget.TableRow.LayoutParams(
+                    android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                    android.widget.TableRow.LayoutParams.WRAP_CONTENT
+                ).apply { this.span = span }
+            }
+        }
+
+        // 1dp vertical divider used as its own column
+        fun vDividerCell(): android.view.View {
+            return android.view.View(this).apply {
+                setBackgroundColor(0xFFCCCCCC.toInt())
+                layoutParams = android.widget.TableRow.LayoutParams(
+                    dp(1), // width
+                    android.widget.TableRow.LayoutParams.MATCH_PARENT // height
+                ).apply {
+                    // a little vertical margin so it doesn't touch text
+                    setMargins(dp(6), dp(2), dp(6), dp(2))
+                }
+            }
+        }
+
+        fun dividerRow(totalSpan: Int): android.widget.TableRow {
+            val tr = android.widget.TableRow(this)
+            val v = android.view.View(this).apply {
+                layoutParams = android.widget.TableRow.LayoutParams(
+                    android.widget.TableRow.LayoutParams.MATCH_PARENT,
+                    dp(1)
+                ).apply { span = totalSpan }
+                setBackgroundColor(0xFFDDDDDD.toInt())
+            }
+            tr.addView(v)
+            return tr
+        }
+
+        // Total logical columns with vertical divider as its own column:
+        // 1 (Name) + 3 (Current) + 1 (|) + 4 (Overall) = 9
+        val totalSpan = 9
+
+        val table = android.widget.TableLayout(this).apply {
+            isShrinkAllColumns = false
+            isStretchAllColumns = false
+            setPadding(dp(12), dp(4), dp(12), dp(4))
+        }
+
+        // Header row 1: Name | Current | | | Overall
+        val header1 = android.widget.TableRow(this).apply {
+            addView(headerCell("Name", span = 1, center = false, bold = true))
+            addView(headerCell("Current", span = 3, center = true, bold = true))
+            addView(vDividerCell()) // vertical divider column
+            addView(headerCell("Overall", span = 4, center = true, bold = true))
+        }
+        table.addView(header1)
+
+        // Header row 2: (under Name) | G W L | | | G W L Win%
+        val header2 = android.widget.TableRow(this).apply {
+            addView(headerCell("", span = 1, center = false, bold = false))
+            addView(headerCell("G"))
+            addView(headerCell("W"))
+            addView(headerCell("L"))
+            addView(vDividerCell()) // vertical divider column
+            addView(headerCell("G"))
+            addView(headerCell("W"))
+            addView(headerCell("L"))
+            addView(headerCell("Win%"))
+        }
+        table.addView(header2)
+        table.addView(dividerRow(totalSpan))
+
+        // Data rows: Name | cur G W L | | | overall G W L Win%
+        rows.forEach { r ->
+            val tr = android.widget.TableRow(this).apply {
+                addView(
+                    textCell(
+                        r.name,
+                        span = 1,
+                        center = false,
+                        mono = false,
+                        sizeSp = 12f,
+                        minEms = 8
+                    )
+                )
+                // Current
+                addView(textCell(r.currentG.toString()))
+                addView(textCell(r.currentW.toString()))
+                addView(textCell(r.currentL.toString()))
+                // Divider
+                addView(vDividerCell())
+                // Overall
+                addView(textCell(r.overallG.toString()))
+                addView(textCell(r.overallW.toString()))
+                addView(textCell(r.overallL.toString()))
+                addView(textCell("${r.overallWinPct}%"))
+            }
+            table.addView(tr)
+        }
+
+        return table
     }
 }
