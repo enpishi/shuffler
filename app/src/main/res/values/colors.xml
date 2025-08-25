@@ -17,4 +17,6 @@
     <color name="skill_orange">#FB8C00</color>
     <color name="skill_green">#4CAF50</color>   <!-- Green 500 -->
 
+    <color name="purple_500">#6200EE</color>
+
 </resources>
