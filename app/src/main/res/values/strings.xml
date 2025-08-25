@@ -3,8 +3,7 @@
     <string name="app_name">Blacksheep</string>
 
     <!-- Strings for PlayerManagementActivity (existing) -->
-    <string name="session_setup_title">Session Setup</string>
-    <string name="active_courts_title">Active Courts</string>
+
     <string name="new_player_name_hint">New Player Name</string>
     <string name="add_button">Add</string>
     <string name="number_of_courts_label">Number of Courts:</string>
@@ -84,4 +83,40 @@
     <string name="stats_w">W</string>
     <string name="stats_l">L</string>
     <string name="stats_win_pct">Win%</string>
+
+    <!-- additional -->
+    <!-- Titles -->
+    <string name="session_setup_title">Session Setup</string>
+    <string name="active_courts_title">Active Courts</string>
+
+    <!-- Buttons -->
+    <string name="stats_button">STATS</string>
+
+    <!-- Resting text -->
+    <string name="resting_list">Resting: %1$s</string>
+
+    <!-- End session dialog -->
+    <string name="end_session_title">End Session</string>
+    <string name="end_session_confirm">End Session</string>
+    <string name="session_ended">Session Ended</string>
+
+    <!-- Toasters/messages previously hardcoded (use where applicable in your code) -->
+    <string name="no_authenticated_user">No authenticated user. Please login again.</string>
+    <string name="enter_valid_court_count">Please enter a valid number of courts.</string>
+    <string name="match_recorded">Recorded: Court %1$d — Winners: %2$s</string>
+    <string name="match_record_failed">Failed to record match: %1$s</string>
+
+    <!-- Sync banner -->
+    <string name="sync_error_code">Sync error: %1$s</string>
+
+    <!-- Stats dialog -->
+    <string name="session_stats_title">Session Stats</string>
+    <string name="name">Name</string>
+    <string name="current">Current</string>
+    <string name="overall">Overall</string>
+    <string name="stat_g">G</string>
+    <string name="stat_w">W</string>
+    <string name="stat_l">L</string>
+    <string name="stat_win_rate">Win%</string>
+    <string name="win_rate_percent">%1$d%%</string>
 </resources>
