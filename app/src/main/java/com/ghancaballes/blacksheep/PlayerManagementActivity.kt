@@ -32,28 +32,31 @@ class PlayerManagementActivity : AppCompatActivity() {
     private lateinit var playersCollection: CollectionReference
     private lateinit var uid: String
 
-    // Optional sync banner
+    // Sync banner
     private var syncBanner: TextView? = null
 
-    // Session + matches
+    // Session & matches
     private var sessionId: String? = null
     private var matchesListener: ListenerRegistration? = null
     private val courtMatchSeq = mutableMapOf<Int, Int>()
 
-    // UI: Setup
+    // Setup UI
     private lateinit var titleTextView: TextView
     private lateinit var setupContainer: LinearLayout
-    private lateinit var playersRecyclerView: RecyclerView
+    private lateinit var playersRecyclerView: RecyclerView    // legacy hidden list
+    private lateinit var playerChipGroup: ChipGroup           // chip selection view
     private lateinit var courtCountEditText: EditText
     private lateinit var startSessionButton: Button
 
-    // UI: Game
+    // Game UI
     private lateinit var restingPlayersTextView: TextView
     private lateinit var courtsRecyclerView: RecyclerView
     private lateinit var gameActionButtons: LinearLayout
-    private lateinit var addLatePlayerButton: Button
-    private lateinit var addCourtButton: Button
-    private lateinit var endSessionButton: Button
+
+    // Action buttons (programmatic)
+    private lateinit var addLatePlayerButton: MaterialButton
+    private lateinit var addCourtButton: MaterialButton
+    private lateinit var endSessionButton: MaterialButton
     private lateinit var sitOutButton: MaterialButton
     private lateinit var restoreButton: MaterialButton
 
@@ -61,19 +64,17 @@ class PlayerManagementActivity : AppCompatActivity() {
     private lateinit var playerSelectionAdapter: PlayerSelectionAdapter
     private lateinit var courtAdapter: CourtAdapter
 
-    // State
+    // Data / state
     private val allPlayers = mutableListOf<Player>()
     private val initialSelectedPlayers = mutableSetOf<Player>()
     private val currentCourts = mutableListOf<Court>()
     private var restingPlayers = LinkedList<Player>()
-
-    // Active session players
-    private val sessionPlayerIds = LinkedHashSet<String>()
+    private val sessionPlayerIds = LinkedHashSet<String>() // players currently in this session
 
     data class SessionStats(var games: Int = 0, var wins: Int = 0, var losses: Int = 0)
     private val sessionStats = mutableMapOf<String, SessionStats>()
 
-    // Legacy / pairing memory
+    // Pairing memory & fairness
     private val partnershipHistory = mutableMapOf<String, Int>()
     private val recentOpponents = mutableMapOf<String, Set<String>>()
     private val partnerCount = mutableMapOf<String, MutableMap<String, Int>>()
@@ -82,7 +83,7 @@ class PlayerManagementActivity : AppCompatActivity() {
     private val lastCourtGroupIds = mutableMapOf<Int, Set<String>>()
     private val lastQuartetByPlayer = mutableMapOf<String, Set<String>>()
 
-    // Penalties
+    // Penalty weights
     private val ALPHA_PARTNER = 1.0
     private val BETA_OPPONENT = 0.5
 
@@ -92,7 +93,7 @@ class PlayerManagementActivity : AppCompatActivity() {
     private var specialTogetherCount = 0
     private var specialTeammateCount = 0
 
-    // New: sitting out
+    // Sitting out
     private val sittingOutIds = mutableSetOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,15 +102,14 @@ class PlayerManagementActivity : AppCompatActivity() {
 
         db = Firebase.firestore
         auth = Firebase.auth
-        val current = auth.currentUser?.uid
-        if (current == null) {
-            Toast.makeText(this, "No authenticated user. Please login again.", Toast.LENGTH_LONG).show()
+        val currentUser = auth.currentUser?.uid
+        if (currentUser == null) {
+            Toast.makeText(this, "No authenticated user. Please login.", Toast.LENGTH_LONG).show()
             finish()
             return
         }
-        uid = current
+        uid = currentUser
         playersCollection = db.collection("users").document(uid).collection("players")
-        Log.d("PlayersPath", "Using players collection: ${playersCollection.path}")
 
         initializeUI()
         initializeAdapters()
@@ -118,22 +118,38 @@ class PlayerManagementActivity : AppCompatActivity() {
         switchToSetupView()
     }
 
+    // ---------- UI Initialization ----------
+
     private fun initializeUI() {
         titleTextView = findViewById(R.id.textViewTitle)
         syncBanner = findViewById(R.id.syncBanner)
 
         setupContainer = findViewById(R.id.setupContainer)
         playersRecyclerView = findViewById(R.id.recyclerViewPlayers)
+        playerChipGroup = findViewById(R.id.playerChipGroup)
         courtCountEditText = findViewById(R.id.editTextCourtCount)
         startSessionButton = findViewById(R.id.buttonStartSession)
 
         restingPlayersTextView = findViewById(R.id.textViewRestingPlayers)
         courtsRecyclerView = findViewById(R.id.recyclerViewCourts)
         gameActionButtons = findViewById(R.id.gameActionButtons)
-        addLatePlayerButton = findViewById(R.id.buttonAddLatePlayer)
-        addCourtButton = findViewById(R.id.buttonAddCourt)
-        endSessionButton = findViewById(R.id.buttonEndSession)
 
+        playersRecyclerView.layoutManager = LinearLayoutManager(this)
+        courtsRecyclerView.layoutManager = LinearLayoutManager(this)
+
+        // Programmatic buttons
+        addLatePlayerButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+            text = "ADD PLAYER"
+            isAllCaps = true
+        }
+        addCourtButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+            text = "ADD COURT"
+            isAllCaps = true
+        }
+        endSessionButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
+            text = "END SESSION"
+            isAllCaps = true
+        }
         sitOutButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
             text = "SIT OUT"
             isAllCaps = true
@@ -143,42 +159,21 @@ class PlayerManagementActivity : AppCompatActivity() {
             isAllCaps = true
         }
 
-        playersRecyclerView.layoutManager = LinearLayoutManager(this)
-        courtsRecyclerView.layoutManager = LinearLayoutManager(this)
-
         rebuildActionButtonsGrid()
     }
 
     private fun rebuildActionButtonsGrid() {
+        gameActionButtons.removeAllViews()
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
-        gameActionButtons.removeAllViews()
-        gameActionButtons.setPadding(0)
 
         val statsButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonStyle).apply {
             text = "STATS"
             isAllCaps = true
             setOnClickListener { showStatsDialog() }
         }
-        addLatePlayerButton.text = "ADD PLAYER"
-        addCourtButton.text = "ADD COURT"
-        endSessionButton.text = "END SESSION"
 
-        val minPx = dp(48)
-        fun styleUniform(b: View) {
-            if (b is TextView) b.isAllCaps = true
-            b.minimumHeight = minPx
-            b.setPadding(0)
-            if (b is MaterialButton) {
-                b.shapeAppearanceModel = b.shapeAppearanceModel.toBuilder().setAllCornerSizes(0f).build()
-                b.setInsetTop(0)
-                b.setInsetBottom(0)
-                b.strokeWidth = 0
-                b.iconPadding = 0
-            }
-        }
-
-        val allButtons = listOf<View>(
+        val allButtons = listOf(
             statsButton,
             addLatePlayerButton,
             addCourtButton,
@@ -186,32 +181,34 @@ class PlayerManagementActivity : AppCompatActivity() {
             sitOutButton,
             restoreButton
         )
-        allButtons.forEach { styleUniform(it) }
+
+        val minH = dp(48)
+        allButtons.forEach { b ->
+            b.minimumHeight = minH
+            if (b is TextView) b.isAllCaps = true
+            b.setPadding(0)
+        }
 
         val table = TableLayout(this)
         fun makeRow(left: View, right: View): TableRow {
-            val row = TableRow(this)
+            val tr = TableRow(this)
             val lp = TableRow.LayoutParams(0, TableRow.LayoutParams.WRAP_CONTENT, 1f)
-            row.addView(left, lp)
-            row.addView(right, lp)
-            return row
+            tr.addView(left, lp)
+            tr.addView(right, lp)
+            return tr
         }
         table.addView(makeRow(statsButton, addLatePlayerButton))
         table.addView(makeRow(addCourtButton, endSessionButton))
         table.addView(makeRow(sitOutButton, restoreButton))
-
         gameActionButtons.addView(
             table,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         )
     }
 
     private fun initializeAdapters() {
-        playerSelectionAdapter = PlayerSelectionAdapter(allPlayers, initialSelectedPlayers) { player, isSelected ->
-            if (isSelected) initialSelectedPlayers.add(player) else initialSelectedPlayers.remove(player)
+        playerSelectionAdapter = PlayerSelectionAdapter(allPlayers, initialSelectedPlayers) { player, selected ->
+            if (selected) initialSelectedPlayers.add(player) else initialSelectedPlayers.remove(player)
         }
         courtAdapter = CourtAdapter(currentCourts, this::handleGameFinished, this::showEditCourtDialog)
         playersRecyclerView.adapter = playerSelectionAdapter
@@ -221,10 +218,11 @@ class PlayerManagementActivity : AppCompatActivity() {
     private fun setClickListeners() {
         val addPlayerButton = findViewById<Button>(R.id.buttonAddPlayer)
         val playerNameEditText = findViewById<EditText>(R.id.editTextPlayerName)
+
         addPlayerButton.setOnClickListener {
-            val playerName = playerNameEditText.text.toString().trim()
-            if (playerName.isNotEmpty()) {
-                addPlayerToFirestore(playerName)
+            val name = playerNameEditText.text.toString().trim()
+            if (name.isNotEmpty()) {
+                addPlayerToFirestore(name)
                 playerNameEditText.text.clear()
             }
         }
@@ -235,39 +233,46 @@ class PlayerManagementActivity : AppCompatActivity() {
         endSessionButton.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle("End Session")
-                .setMessage("Are you sure you want to end the current session? All court progress will be lost.")
+                .setMessage("End the current session?")
                 .setPositiveButton("End Session") { _, _ ->
                     switchToSetupView()
                     Toast.makeText(this, "Session Ended", Toast.LENGTH_SHORT).show()
-                }.setNegativeButton("Cancel", null)
+                }
+                .setNegativeButton("Cancel", null)
                 .show()
         }
         sitOutButton.setOnClickListener { showSitOutFlow() }
         restoreButton.setOnClickListener { showRestoreDialog() }
     }
 
+    // ---------- Firestore Player Updates ----------
+
     private fun listenForPlayerUpdates() {
-        playersCollection.orderBy("name").addSnapshotListener { snapshots, e ->
+        playersCollection.orderBy("name").addSnapshotListener { snap, e ->
             if (e != null) {
-                Log.w("Firestore", "Listen failed.", e)
+                Log.w("Firestore", "Listen failed", e)
                 return@addSnapshotListener
             }
-            val currentSelectedIds = initialSelectedPlayers.map { it.id }.toSet()
+            val prevSelected = initialSelectedPlayers.map { it.id }.toSet()
             allPlayers.clear()
             initialSelectedPlayers.clear()
-            snapshots?.forEach { doc ->
+
+            snap?.forEach { doc ->
                 val p = doc.toObject(Player::class.java).copy(id = doc.id)
                 allPlayers.add(p)
-                if (currentSelectedIds.contains(p.id)) initialSelectedPlayers.add(p)
+                if (prevSelected.contains(p.id)) initialSelectedPlayers.add(p)
             }
+
             if (setupContainer.visibility == View.VISIBLE) {
-                playerSelectionAdapter.notifyDataSetChanged()
+                rebuildPlayerChips()
             } else {
                 courtAdapter.notifyDataSetChanged()
                 updateRestingPlayersView()
             }
         }
     }
+
+    // ---------- View Mode Switching ----------
 
     private fun switchToSetupView() {
         titleTextView.text = "Session Setup"
@@ -290,14 +295,15 @@ class PlayerManagementActivity : AppCompatActivity() {
         recentOpponents.clear()
         partnerCount.clear()
         opponentCount.clear()
-        specialTogetherCount = 0
-        specialTeammateCount = 0
         restCount.clear()
         lastCourtGroupIds.clear()
         lastQuartetByPlayer.clear()
+        specialTogetherCount = 0
+        specialTeammateCount = 0
         sittingOutIds.clear()
 
         playerSelectionAdapter.notifyDataSetChanged()
+        rebuildPlayerChips()
         syncBanner?.visibility = View.GONE
     }
 
@@ -308,9 +314,34 @@ class PlayerManagementActivity : AppCompatActivity() {
         restingPlayersTextView.visibility = View.VISIBLE
         courtsRecyclerView.visibility = View.VISIBLE
         gameActionButtons.visibility = View.VISIBLE
+
         courtAdapter.notifyDataSetChanged()
         updateRestingPlayersView()
     }
+
+    // ---------- Chip Builder ----------
+
+    private fun rebuildPlayerChips() {
+        if (setupContainer.visibility != View.VISIBLE) return
+        playerChipGroup.removeAllViews()
+        val selected = initialSelectedPlayers.map { it.id }.toSet()
+        val sorted = allPlayers.sortedBy { it.name.lowercase() }
+        sorted.forEach { player ->
+            val chip = Chip(this).apply {
+                text = player.name
+                isCheckable = true
+                isChecked = selected.contains(player.id)
+                tag = player
+                setOnClickListener {
+                    val checked = (it as Chip).isChecked
+                    if (checked) initialSelectedPlayers.add(player) else initialSelectedPlayers.remove(player)
+                }
+            }
+            playerChipGroup.addView(chip)
+        }
+    }
+
+    // ---------- Session Start ----------
 
     private fun startSession() {
         val selectedIds = initialSelectedPlayers.map { it.id }.toSet()
@@ -318,16 +349,12 @@ class PlayerManagementActivity : AppCompatActivity() {
 
         val courtCount = courtCountEditText.text.toString().toIntOrNull() ?: 0
         if (courtCount <= 0) {
-            Toast.makeText(this, "Please enter a valid number of courts.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Enter number of courts.", Toast.LENGTH_SHORT).show()
             return
         }
         val needed = courtCount * 4
         if (playersForSession.size < needed) {
-            Toast.makeText(
-                this,
-                "Not enough players for $courtCount court(s). Need $needed, selected ${playersForSession.size}.",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(this, "Need $needed players; selected ${playersForSession.size}.", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -348,17 +375,22 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
         lastCourtGroupIds.clear()
         lastQuartetByPlayer.clear()
+        specialTogetherCount = 0
+        specialTeammateCount = 0
 
         currentCourts.clear()
         for (i in 1..courtCount) {
             if (pool.size < 4) break
-            val courtPlayers = popRandom(pool, 4)
-            val teams = generateTeamsForCourt(courtPlayers)
+            val quartet = popRandom(pool, 4)
+            val teams = generateTeamsForCourt(quartet)
             currentCourts.add(Court(teams, i))
         }
         restingPlayers = LinkedList(pool)
+
         switchToGameView()
     }
+
+    // ---------- Match / Game Flow ----------
 
     private fun recordMatchAndUpdatePlayerStats(winners: List<Player>, losers: List<Player>, courtIndex: Int) {
         val currentSession = sessionId ?: return
@@ -373,41 +405,39 @@ class PlayerManagementActivity : AppCompatActivity() {
         val matchRef = matchesRef.document(matchId)
 
         db.runTransaction { tx ->
-            val snap = tx.get(matchRef)
-            if (snap.exists()) return@runTransaction null
-
+            if (tx.get(matchRef).exists()) return@runTransaction null
             val gamePlayers = winners + losers
-            val playerSnaps = gamePlayers.associateWith { p -> tx.get(playersCollection.document(p.id)) }
-            playerSnaps.forEach { (p, s) ->
-                if (!s.exists()) throw Exception("Player doc missing for ${p.name}")
-            }
+            val snaps = gamePlayers.associateWith { tx.get(playersCollection.document(it.id)) }
+            snaps.forEach { (p, s) -> if (!s.exists()) throw Exception("Missing player ${p.name}") }
 
             tx.set(
-                matchRef, mapOf(
+                matchRef,
+                mapOf(
                     "sessionId" to currentSession,
                     "matchId" to matchId,
                     "courtNumber" to courtNumber,
                     "winners" to winners.map { it.id },
                     "losers" to losers.map { it.id },
                     "createdAt" to FieldValue.serverTimestamp()
-                ), SetOptions.merge()
+                ),
+                SetOptions.merge()
             )
 
-            playerSnaps.forEach { (p, s) ->
+            snaps.forEach { (p, s) ->
                 val wins = s.getLong("wins") ?: 0L
                 val losses = s.getLong("losses") ?: 0L
                 val won = winners.any { it.id == p.id }
                 val newWins = if (won) wins + 1 else wins
                 val newLosses = if (won) losses else losses + 1
                 val games = newWins + newLosses
-                val winrate = if (games > 0) newWins.toDouble() / games else 0.0
+                val winRate = if (games > 0) newWins.toDouble() / games else 0.0
                 tx.update(
                     s.reference,
                     mapOf(
                         "wins" to newWins,
                         "losses" to newLosses,
                         "gamesPlayed" to games,
-                        "winrate" to winrate,
+                        "winrate" to winRate,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -416,12 +446,12 @@ class PlayerManagementActivity : AppCompatActivity() {
         }.addOnSuccessListener {
             Toast.makeText(
                 this,
-                "Recorded: Court $courtNumber — Winners: ${winners.joinToString { it.name }}",
+                "Recorded Court $courtNumber winners: ${winners.joinToString { it.name }}",
                 Toast.LENGTH_SHORT
             ).show()
             courtAdapter.notifyItemChanged(courtIndex)
         }.addOnFailureListener {
-            Toast.makeText(this, "Failed to record match: ${it.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Record failed: ${it.message}", Toast.LENGTH_LONG).show()
             courtAdapter.notifyItemChanged(courtIndex)
         }
     }
@@ -431,16 +461,15 @@ class PlayerManagementActivity : AppCompatActivity() {
 
         (winners + losers).forEach {
             sessionPlayerIds.add(it.id)
-            val s = sessionStats.getOrPut(it.id) { SessionStats() }
-            s.games += 1
+            sessionStats.getOrPut(it.id) { SessionStats() }.games += 1
         }
         winners.forEach { sessionStats.getOrPut(it.id) { SessionStats() }.wins += 1 }
         losers.forEach { sessionStats.getOrPut(it.id) { SessionStats() }.losses += 1 }
 
-        val winKey = winners.map { it.name }.sorted().joinToString("|")
-        val loseKey = losers.map { it.name }.sorted().joinToString("|")
-        partnershipHistory[winKey] = partnershipHistory.getOrDefault(winKey, 0) + 1
-        partnershipHistory[loseKey] = partnershipHistory.getOrDefault(loseKey, 0) + 1
+        partnershipHistory[winners.map { it.name }.sorted().joinToString("|")] =
+            (partnershipHistory[winners.map { it.name }.sorted().joinToString("|")] ?: 0) + 1
+        partnershipHistory[losers.map { it.name }.sorted().joinToString("|")] =
+            (partnershipHistory[losers.map { it.name }.sorted().joinToString("|")] ?: 0) + 1
 
         updatePairingStats(winners, losers)
         updateSpecialPairStats(winners, losers)
@@ -449,8 +478,8 @@ class PlayerManagementActivity : AppCompatActivity() {
         val courtNumber = currentCourts.getOrNull(courtIndex)?.courtNumber ?: (courtIndex + 1)
         val lastFour = winners + losers
         lastCourtGroupIds[courtNumber] = lastFour.map { it.id }.toSet()
-        val idList = lastFour.map { it.id }
-        for (p in lastFour) lastQuartetByPlayer[p.id] = idList.filter { it != p.id }.toSet()
+        val ids = lastFour.map { it.id }
+        lastFour.forEach { p -> lastQuartetByPlayer[p.id] = ids.filter { it != p.id }.toSet() }
 
         lastFour.forEach { restCount[it.id] = 0 }
         restingPlayers.addAll(lastFour)
@@ -464,39 +493,396 @@ class PlayerManagementActivity : AppCompatActivity() {
         for (court in currentCourts) {
             if (court.teams == null && restingPlayers.size >= 4) {
                 val avoid = lastCourtGroupIds[court.courtNumber]
-                val newPlayers = drawFairFromRestingQueueAvoid(4, avoid)
-                court.teams = generateTeamsForCourt(newPlayers)
+                val picks = drawFairFromRestingQueueAvoid(4, avoid)
+                court.teams = generateTeamsForCourt(picks)
             }
         }
         courtAdapter.notifyDataSetChanged()
     }
 
     private fun updateRestingPlayersView() {
-        val restingNames = if (restingPlayers.isEmpty()) "None" else restingPlayers.joinToString(", ") { it.name }
-        val sittingNames = if (sittingOutIds.isEmpty()) ""
-        else " | Sitting Out: " + sittingOutIds.mapNotNull { playerById(it)?.name }.sorted().joinToString(", ")
-        restingPlayersTextView.text = "Resting: $restingNames$sittingNames"
+        val resting = if (restingPlayers.isEmpty()) "None" else restingPlayers.joinToString(", ") { it.name }
+        val sitting = if (sittingOutIds.isEmpty()) "" else " | Sitting Out: " +
+                sittingOutIds.mapNotNull { playerById(it)?.name }.sorted().joinToString(", ")
+        restingPlayersTextView.text = "Resting: $resting$sitting"
         addCourtButton.isEnabled = restingPlayers.size >= 4
     }
 
-    private fun addPlayerToFirestore(playerName: String) {
-        val normalizedName = playerName.lowercase()
-        val ref = playersCollection.document(normalizedName)
-        ref.get().addOnSuccessListener {
-            if (!it.exists()) {
-                val p = Player(name = playerName, wins = 0, losses = 0, gamesPlayed = 0, winrate = 0.0)
-                ref.set(p)
-                    .addOnSuccessListener { Toast.makeText(this, "$playerName added.", Toast.LENGTH_SHORT).show() }
-                    .addOnFailureListener { e -> Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show() }
+    // ---------- Player Add (Setup) ----------
+
+    private fun addPlayerToFirestore(name: String) {
+        val id = name.lowercase()
+        val ref = playersCollection.document(id)
+        ref.get().addOnSuccessListener { snap ->
+            if (snap.exists()) {
+                Toast.makeText(this, "$name already exists.", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "$playerName already exists.", Toast.LENGTH_SHORT).show()
+                val p = Player(name = name, wins = 0, losses = 0, gamesPlayed = 0, winrate = 0.0)
+                ref.set(p).addOnSuccessListener {
+                    val playerWithId = p.copy(id = id)
+                    allPlayers.add(playerWithId)
+                    if (setupContainer.visibility == View.VISIBLE) {
+                        initialSelectedPlayers.add(playerWithId)
+                        rebuildPlayerChips()
+                    }
+                    Toast.makeText(this, "$name added.", Toast.LENGTH_SHORT).show()
+                }.addOnFailureListener {
+                    Toast.makeText(this, "Add failed: ${it.message}", Toast.LENGTH_LONG).show()
+                }
             }
-        }.addOnFailureListener { e ->
-            Toast.makeText(this, "Error checking player: ${e.message}", Toast.LENGTH_LONG).show()
+        }.addOnFailureListener {
+            Toast.makeText(this, "Lookup failed: ${it.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    // Ratings & pairing counters
+    // ---------- Sit Out / Restore Flow ----------
+
+    private data class CourtLocation(val courtIndex: Int, val teamIndex: Int, val posInTeam: Int)
+
+    private fun showSitOutFlow() {
+        val onCourts = currentCourts.flatMap { c -> c.teams?.let { it.first + it.second } ?: emptyList() }
+            .filter { it.id !in sittingOutIds }
+        val resting = restingPlayers.filter { it.id !in sittingOutIds }
+        val candidates = (onCourts + resting).distinctBy { it.id }.sortedBy { it.name.lowercase() }
+
+        if (candidates.isEmpty()) {
+            Toast.makeText(this, "No eligible players.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Select Player to Sit Out")
+            .setItems(candidates.map { it.name }.toTypedArray()) { d, idx ->
+                val player = candidates[idx]
+                d.dismiss()
+                val loc = locatePlayerOnCourt(player.id)
+                if (loc == null) {
+                    if (restingPlayers.removeIf { it.id == player.id }) {
+                        sittingOutIds.add(player.id)
+                        Toast.makeText(this, "${player.name} is sitting out.", Toast.LENGTH_SHORT).show()
+                        updateRestingPlayersView()
+                    }
+                } else promptReplacementForActivePlayer(player, loc)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun locatePlayerOnCourt(playerId: String): CourtLocation? {
+        currentCourts.forEachIndexed { ci, court ->
+            court.teams?.let { (a, b) ->
+                val ai = a.indexOfFirst { it.id == playerId }
+                if (ai >= 0) return CourtLocation(ci, 0, ai)
+                val bi = b.indexOfFirst { it.id == playerId }
+                if (bi >= 0) return CourtLocation(ci, 1, bi)
+            }
+        }
+        return null
+    }
+
+    private fun promptReplacementForActivePlayer(leaving: Player, loc: CourtLocation) {
+        if (restingPlayers.isEmpty()) {
+            Toast.makeText(this, "No resting players to replace ${leaving.name}.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val replacements = restingPlayers.toList().sortedBy { it.name.lowercase() }
+        AlertDialog.Builder(this)
+            .setTitle("Replace ${leaving.name} with:")
+            .setItems(replacements.map { it.name }.toTypedArray()) { d, idx ->
+                val replacement = replacements[idx]
+                d.dismiss()
+                applyReplacement(leaving, replacement, loc)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun applyReplacement(leaving: Player, replacement: Player, loc: CourtLocation) {
+        val court = currentCourts.getOrNull(loc.courtIndex) ?: return
+        val teams = court.teams ?: return
+        val teamA = teams.first.toMutableList()
+        val teamB = teams.second.toMutableList()
+        val target = if (loc.teamIndex == 0) teamA else teamB
+        if (loc.posInTeam !in target.indices || target[loc.posInTeam].id != leaving.id) {
+            Toast.makeText(this, "Player already moved; try again.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        target[loc.posInTeam] = replacement
+        court.teams = Pair(teamA, teamB)
+
+        restingPlayers.removeIf { it.id == replacement.id }
+        restCount[replacement.id] = 0
+        sittingOutIds.add(leaving.id)
+
+        Toast.makeText(this, "${leaving.name} out, ${replacement.name} in.", Toast.LENGTH_SHORT).show()
+        courtAdapter.notifyItemChanged(loc.courtIndex)
+        updateRestingPlayersView()
+    }
+
+    private fun showRestoreDialog() {
+        if (sittingOutIds.isEmpty()) {
+            Toast.makeText(this, "No players sitting out.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val candidates = sittingOutIds.mapNotNull { playerById(it) }.sortedBy { it.name.lowercase() }
+
+        val view = layoutInflater.inflate(R.layout.dialog_add_late_player, null)
+        val chipGroup = view.findViewById<ChipGroup>(R.id.chipGroupExistingPlayers)
+        val nameEt = view.findViewById<EditText>(R.id.editTextNewPlayerName)
+        val addBtn = view.findViewById<Button>(R.id.buttonAddNewPlayer)
+        val title = view.findViewById<TextView>(R.id.textViewExistingPlayersTitle)
+        nameEt.visibility = View.GONE
+        addBtn.visibility = View.GONE
+        title.text = "Select players to Restore"
+
+        candidates.forEach { p ->
+            val chip = Chip(this).apply {
+                text = p.name
+                isCheckable = true
+                tag = p
+            }
+            chipGroup.addView(chip)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Restore Players")
+            .setView(view)
+            .setPositiveButton("Restore") { _, _ ->
+                val selected = mutableListOf<Player>()
+                for (i in 0 until chipGroup.childCount) {
+                    val c = chipGroup.getChildAt(i) as Chip
+                    if (c.isChecked) selected += c.tag as Player
+                }
+                if (selected.isEmpty()) return@setPositiveButton
+                selected.forEach {
+                    sittingOutIds.remove(it.id)
+                    restCount.putIfAbsent(it.id, 0)
+                    restingPlayers.add(it)
+                }
+                Toast.makeText(this, "Restored: ${selected.joinToString { it.name }}", Toast.LENGTH_SHORT).show()
+                updateRestingPlayersView()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // ---------- Late Player Dialog (FIX APPLIED HERE) ----------
+
+    private fun showAddLatePlayerDialog() {
+        // OLD (problematic) logic only excluded players on courts.
+        // FIX: Exclude every player already in the session (sessionPlayerIds) plus those sitting out.
+        val availablePlayers = allPlayers.filter {
+            it.id !in sessionPlayerIds && it.id !in sittingOutIds
+        }
+
+        val view = layoutInflater.inflate(R.layout.dialog_add_late_player, null)
+        val chipGroup = view.findViewById<ChipGroup>(R.id.chipGroupExistingPlayers)
+        val newPlayerNameEditText = view.findViewById<EditText>(R.id.editTextNewPlayerName)
+        val addNewPlayerButton = view.findViewById<Button>(R.id.buttonAddNewPlayer)
+        val existingPlayersTitle = view.findViewById<TextView>(R.id.textViewExistingPlayersTitle)
+
+        if (availablePlayers.isEmpty()) {
+            existingPlayersTitle.text = "No more players available"
+            chipGroup.visibility = View.GONE
+        } else {
+            existingPlayersTitle.text = "Add from Existing"
+            availablePlayers.sortedBy { it.name.lowercase() }.forEach { player ->
+                val chip = Chip(this).apply {
+                    text = player.name
+                    isCheckable = true
+                    tag = player
+                }
+                chipGroup.addView(chip)
+            }
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Add Late Players")
+            .setView(view)
+            .setPositiveButton("Add Selected") { _, _ ->
+                val selectedPlayers = mutableListOf<Player>()
+                for (i in 0 until chipGroup.childCount) {
+                    val chip = chipGroup.getChildAt(i) as Chip
+                    if (chip.isChecked) selectedPlayers.add(chip.tag as Player)
+                }
+                if (selectedPlayers.isNotEmpty()) {
+                    selectedPlayers.forEach {
+                        restCount[it.id] = 0
+                        sessionPlayerIds.add(it.id)
+                        sessionStats.putIfAbsent(it.id, SessionStats())
+                    }
+                    restingPlayers.addAll(selectedPlayers)
+                    updateRestingPlayersView()
+                    Toast.makeText(
+                        this,
+                        "Added: ${selectedPlayers.joinToString { it.name }}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        addNewPlayerButton.setOnClickListener {
+            val playerName = newPlayerNameEditText.text.toString().trim()
+            if (playerName.isNotEmpty()) {
+                addLatePlayer(playerName) {
+                    dialog.dismiss()
+                    showAddLatePlayerDialog() // reopen with refreshed list
+                }
+            } else {
+                Toast.makeText(this, "Player name cannot be empty.", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun addLatePlayer(playerName: String, onSuccess: () -> Unit) {
+        val normalizedName = playerName.lowercase()
+        if (allPlayers.any { it.name.equals(normalizedName, true) }) {
+            Toast.makeText(this, "$playerName already exists.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val newPlayer = Player(name = playerName, wins = 0, losses = 0, gamesPlayed = 0, winrate = 0.0)
+        playersCollection.document(normalizedName).set(newPlayer)
+            .addOnSuccessListener {
+                val withId = newPlayer.copy(id = normalizedName)
+                allPlayers.add(withId)
+                restingPlayers.add(withId)
+                restCount[withId.id] = 0
+                sessionPlayerIds.add(withId.id)
+                sessionStats.putIfAbsent(withId.id, SessionStats())
+                updateRestingPlayersView()
+                Toast.makeText(this, "$playerName added & resting.", Toast.LENGTH_SHORT).show()
+                onSuccess()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Error adding player: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    // ---------- Court Management ----------
+
+    private fun addCourt() {
+        if (restingPlayers.size < 4) {
+            Toast.makeText(this, "Need 4 resting players.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val picks = drawFairFromRestingQueueAvoid(4, null)
+        val teams = generateTeamsForCourt(picks)
+        val newNumber = (currentCourts.maxOfOrNull { it.courtNumber } ?: 0) + 1
+        currentCourts.add(Court(teams, newNumber))
+        courtAdapter.notifyDataSetChanged()
+        updateRestingPlayersView()
+        Toast.makeText(this, "Court $newNumber added.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showEditCourtDialog(courtIndex: Int) {
+        val court = currentCourts.getOrNull(courtIndex) ?: return
+        val (teamA, teamB) = court.teams ?: Pair(emptyList(), emptyList())
+
+        val view = layoutInflater.inflate(R.layout.dialog_edit_court, null)
+        val rvTeamA = view.findViewById<RecyclerView>(R.id.recyclerViewTeamA)
+        val rvTeamB = view.findViewById<RecyclerView>(R.id.recyclerViewTeamB)
+        val rvResting = view.findViewById<RecyclerView>(R.id.recyclerViewResting)
+        val restingTitle = view.findViewById<TextView>(R.id.textViewRestingTitle)
+        val deleteButton = view.findViewById<Button>(R.id.buttonDeleteCourt)
+
+        val teamAMutable = teamA.toMutableList()
+        val teamBMutable = teamB.toMutableList()
+        val restingMutable = restingPlayers.toMutableList()
+
+        val adapterA = EditCourtPlayerAdapter(teamAMutable)
+        val adapterB = EditCourtPlayerAdapter(teamBMutable)
+        val adapterResting = EditCourtPlayerAdapter(restingMutable)
+
+        var firstSelection: Player? = null
+        var firstList: MutableList<Player>? = null
+        val adapters = listOf(adapterA, adapterB, adapterResting)
+
+        fun handleSelection(player: Player, list: MutableList<Player>) {
+            if (firstSelection == null) {
+                firstSelection = player
+                firstList = list
+                adapters.forEach { it.selectedPlayer = player; it.notifyDataSetChanged() }
+            } else {
+                if (firstSelection != player) {
+                    val p1 = firstSelection!!
+                    val l1 = firstList!!
+                    val i1 = l1.indexOf(p1)
+                    val i2 = list.indexOf(player)
+                    if (i1 != -1 && i2 != -1) {
+                        l1[i1] = player
+                        list[i2] = p1
+                    }
+                }
+                firstSelection = null
+                firstList = null
+                adapters.forEach { it.selectedPlayer = null; it.notifyDataSetChanged() }
+            }
+        }
+
+        adapterA.onPlayerSelected = { handleSelection(it, teamAMutable) }
+        adapterB.onPlayerSelected = { handleSelection(it, teamBMutable) }
+        adapterResting.onPlayerSelected = { handleSelection(it, restingMutable) }
+
+        rvTeamA.layoutManager = LinearLayoutManager(this)
+        rvTeamA.adapter = adapterA
+        rvTeamB.layoutManager = LinearLayoutManager(this)
+        rvTeamB.adapter = adapterB
+
+        if (restingMutable.isEmpty()) {
+            restingTitle.visibility = View.GONE
+            rvResting.visibility = View.GONE
+        } else {
+            rvResting.layoutManager = LinearLayoutManager(this)
+            rvResting.adapter = adapterResting
+        }
+
+        val mainDialog = AlertDialog.Builder(this)
+            .setTitle("Edit Court ${court.courtNumber}")
+            .setView(view)
+            .setPositiveButton("Done") { _, _ ->
+                currentCourts[courtIndex].teams =
+                    if (teamAMutable.isNotEmpty() || teamBMutable.isNotEmpty()) Pair(teamAMutable, teamBMutable) else null
+                restingPlayers = LinkedList(restingMutable)
+                restingPlayers.forEach {
+                    restCount.putIfAbsent(it.id, 0)
+                    sessionPlayerIds.add(it.id)
+                    sessionStats.putIfAbsent(it.id, SessionStats())
+                }
+                courtAdapter.notifyItemChanged(courtIndex)
+                updateRestingPlayersView()
+            }
+            .setNeutralButton("Cancel", null)
+            .create()
+
+        deleteButton.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Delete Court")
+                .setMessage("Delete this court and move players to resting?")
+                .setPositiveButton("Delete") { _, _ ->
+                    val toRest = currentCourts[courtIndex].teams?.toList()?.flatMap { it } ?: emptyList()
+                    toRest.forEach {
+                        restCount[it.id] = 0
+                        sessionPlayerIds.add(it.id)
+                        sessionStats.putIfAbsent(it.id, SessionStats())
+                    }
+                    restingPlayers.addAll(toRest)
+                    currentCourts.removeAt(courtIndex)
+                    courtAdapter.notifyDataSetChanged()
+                    updateRestingPlayersView()
+                    mainDialog.dismiss()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        mainDialog.show()
+    }
+
+    // ---------- Pairing Logic ----------
+
     private fun rating(p: Player): Double = if (p.gamesPlayed < 10) 0.5 else p.winrate
     private fun getPartnerCount(a: String, b: String): Int {
         if (a == b) return 0
@@ -511,33 +897,31 @@ class PlayerManagementActivity : AppCompatActivity() {
     private fun incPartnerCountPair(a: String, b: String) {
         if (a == b) return
         val (x, y) = if (a < b) a to b else b to a
-        val inner = partnerCount.getOrPut(x) { mutableMapOf() }
-        inner[y] = (inner[y] ?: 0) + 1
+        val map = partnerCount.getOrPut(x) { mutableMapOf() }
+        map[y] = (map[y] ?: 0) + 1
     }
     private fun incOpponentCountPair(a: String, b: String) {
         if (a == b) return
         val (x, y) = if (a < b) a to b else b to a
-        val inner = opponentCount.getOrPut(x) { mutableMapOf() }
-        inner[y] = (inner[y] ?: 0) + 1
+        val map = opponentCount.getOrPut(x) { mutableMapOf() }
+        map[y] = (map[y] ?: 0) + 1
     }
     private fun updatePairingStats(winners: List<Player>, losers: List<Player>) {
         if (winners.size == 2) incPartnerCountPair(winners[0].id, winners[1].id)
         if (losers.size == 2) incPartnerCountPair(losers[0].id, losers[1].id)
         for (w in winners) for (l in losers) incOpponentCountPair(w.id, l.id)
     }
-
-    // Special rule
-    private fun isChad(p: Player) = p.name.equals("chad", ignoreCase = true)
-    private fun isBudong(p: Player) = p.name.equals("budong", ignoreCase = true)
+    private fun isChad(p: Player) = p.name.equals("chad", true)
+    private fun isBudong(p: Player) = p.name.equals("budong", true)
     private fun updateSpecialPairStats(winners: List<Player>, losers: List<Player>) {
         val all = winners + losers
         val hasChad = all.any { isChad(it) }
         val hasBudong = all.any { isBudong(it) }
         if (!hasChad || !hasBudong) return
-        specialTogetherCount += 1
+        specialTogetherCount++
         val teammates = (winners.any { isChad(it) } && winners.any { isBudong(it) }) ||
                 (losers.any { isChad(it) } && losers.any { isBudong(it) })
-        if (teammates) specialTeammateCount += 1
+        if (teammates) specialTeammateCount++
     }
     private fun specialBiasCost(teamA: List<Player>, teamB: List<Player>, four: List<Player>): Double {
         val hasChad = four.any { isChad(it) }
@@ -547,34 +931,34 @@ class PlayerManagementActivity : AppCompatActivity() {
                 (teamB.any { isChad(it) } && teamB.any { isBudong(it) })
         val together = specialTogetherCount
         val teamed = specialTeammateCount
-        val currentRatio = if (together > 0) teamed.toDouble() / together else 0.0
-        val delta = SPECIAL_DESIRED_RATIO - currentRatio
+        val ratio = if (together > 0) teamed.toDouble() / together else 0.0
+        val delta = SPECIAL_DESIRED_RATIO - ratio
         val sign = if (teammatesNow) -1.0 else 1.0
         return sign * SPECIAL_WEIGHT * delta
     }
     private fun pairingCost(teamA: List<Player>, teamB: List<Player>): Double {
         val avgA = teamA.map { rating(it) }.average()
         val avgB = teamB.map { rating(it) }.average()
-        val balanceCost = abs(avgA - avgB)
+        val balance = abs(avgA - avgB)
         val partnerPenalty = getPartnerCount(teamA[0].id, teamA[1].id) + getPartnerCount(teamB[0].id, teamB[1].id)
         var opponentPenalty = 0
         for (a in teamA) for (b in teamB) opponentPenalty += getOpponentCount(a.id, b.id)
-        return balanceCost + ALPHA_PARTNER * partnerPenalty + BETA_OPPONENT * opponentPenalty
+        return balance + ALPHA_PARTNER * partnerPenalty + BETA_OPPONENT * opponentPenalty
     }
     private fun chooseBestPairingOfFour(players: List<Player>): Pair<List<Player>, List<Player>> {
         require(players.size == 4)
         val (A, B, C, D) = players
-        val options = listOf(
+        val combos = listOf(
             Pair(listOf(A, B), listOf(C, D)),
             Pair(listOf(A, C), listOf(B, D)),
             Pair(listOf(A, D), listOf(B, C))
         )
-        var best = options.first()
+        var best = combos.first()
         var bestCost = pairingCost(best.first, best.second) + specialBiasCost(best.first, best.second, players)
-        for (opt in options.drop(1)) {
-            val cost = pairingCost(opt.first, opt.second) + specialBiasCost(opt.first, opt.second, players)
+        for (c in combos.drop(1)) {
+            val cost = pairingCost(c.first, c.second) + specialBiasCost(c.first, c.second, players)
             if (cost < bestCost) {
-                best = opt
+                best = c
                 bestCost = cost
             }
         }
@@ -584,8 +968,6 @@ class PlayerManagementActivity : AppCompatActivity() {
         if (players.size != 4) return null
         return chooseBestPairingOfFour(players)
     }
-
-    // Random selection
     private fun popRandom(list: MutableList<Player>, count: Int): List<Player> {
         val c = min(count, list.size)
         val picked = mutableListOf<Player>()
@@ -595,13 +977,12 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
         return picked
     }
-
     private fun drawFairFromRestingQueueAvoid(n: Int, avoidGroup: Set<String>?): List<Player> {
         if (restingPlayers.isEmpty() || n <= 0) return emptyList()
         val indexed = restingPlayers.mapIndexed { idx, p -> Triple(idx, p, restCount[p.id] ?: 0) }
         val withRest = indexed.filter { it.third > 0 }
-        val basePool = if (withRest.size >= n) withRest else indexed
-        val pre = basePool.shuffled()
+        val base = if (withRest.size >= n) withRest else indexed
+        val pre = base.shuffled()
         val sorted = pre.sortedWith(compareByDescending<Triple<Int, Player, Int>> { it.third })
         val K = min(8, sorted.size)
         val cands = sorted.take(K)
@@ -636,26 +1017,22 @@ class PlayerManagementActivity : AppCompatActivity() {
                             }
                         }
         }
-        val pickedTriples = best ?: run {
+        val chosen = best ?: run {
             val tmp = sorted.take(min(n, sorted.size)).toMutableList()
             if (avoidGroup != null && tmp.map { it.second.id }.toSet() == avoidGroup) {
-                val replacement = sorted.drop(tmp.size).firstOrNull { it.second.id !in avoidGroup }
-                if (replacement != null) tmp[0] = replacement
-                else {
-                    val swapCandidate = sorted.firstOrNull { it.second.id !in avoidGroup }
-                    if (swapCandidate != null) tmp[0] = swapCandidate
-                }
+                val repl = sorted.drop(tmp.size).firstOrNull { it.second.id !in avoidGroup }
+                if (repl != null) tmp[0] = repl
             }
             tmp
         }
-        val indicesDesc = pickedTriples.map { it.first }.sortedDescending()
-        indicesDesc.forEach { restingPlayers.removeAt(it) }
-        val picked = pickedTriples.map { it.second }
+        chosen.map { it.first }.sortedDescending().forEach { restingPlayers.removeAt(it) }
+        val picked = chosen.map { it.second }
         picked.forEach { restCount[it.id] = 0 }
         return picked
     }
 
-    // Stats
+    // ---------- Stats UI ----------
+
     private data class StatsRow(
         val name: String,
         val currentG: Int, val currentW: Int, val currentL: Int,
@@ -671,12 +1048,7 @@ class PlayerManagementActivity : AppCompatActivity() {
             val g = p.gamesPlayed
             val w = p.wins
             val pct = if (g > 0) ((w.toDouble() / g) * 100).toInt() else 0
-            StatsRow(
-                name = p.name,
-                currentG = cur.games, currentW = cur.wins, currentL = cur.losses,
-                overallG = g, overallW = w, overallL = p.losses,
-                overallWinPct = pct
-            )
+            StatsRow(p.name, cur.games, cur.wins, cur.losses, g, w, p.losses, pct)
         }.sortedBy { it.name.lowercase() }
     }
 
@@ -685,14 +1057,8 @@ class PlayerManagementActivity : AppCompatActivity() {
         val hScroll = HorizontalScrollView(this)
         val vScroll = ScrollView(this).apply { isFillViewport = true }
         val table = buildStatsTable(rows)
-        vScroll.addView(table, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
-        hScroll.addView(vScroll, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
+        vScroll.addView(table, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        hScroll.addView(vScroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         AlertDialog.Builder(this)
             .setTitle("Session Stats")
             .setView(hScroll)
@@ -702,48 +1068,39 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun buildStatsTable(rows: List<StatsRow>): TableLayout {
         val density = resources.displayMetrics.density
-        fun dp(px: Int) = (px * density).toInt()
-        val NAME_COL_WIDTH_DP = 112
+        fun dp(x: Int) = (x * density).toInt()
+        val NAME_W = 112
 
-        fun headerCell(text: String, span: Int = 1, center: Boolean = true, bold: Boolean = true, sizeSp: Float = 13f) =
-            TextView(this).apply {
-                this.text = text
-                textSize = sizeSp
-                if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setPadding(dp(8), dp(6), dp(8), dp(6))
-                gravity = if (center) android.view.Gravity.CENTER else android.view.Gravity.START
-            }.also {
-                val lp = TableRow.LayoutParams(
-                    TableRow.LayoutParams.WRAP_CONTENT,
-                    TableRow.LayoutParams.WRAP_CONTENT
-                )
-                lp.span = span
-                it.layoutParams = lp
-            }
-
+        fun headerCell(text: String, span: Int = 1) = TextView(this).apply {
+            this.text = text
+            textSize = 13f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            gravity = android.view.Gravity.CENTER
+            val lp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.WRAP_CONTENT)
+            lp.span = span
+            layoutParams = lp
+        }
         fun headerNameCell(text: String) = TextView(this).apply {
             this.text = text
             textSize = 13f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(dp(8), dp(6), dp(8), dp(6))
+            minWidth = dp(NAME_W); maxWidth = dp(NAME_W)
             gravity = android.view.Gravity.START
-            minWidth = dp(NAME_COL_WIDTH_DP)
-            maxWidth = dp(NAME_COL_WIDTH_DP)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
-
-        fun bodyCell(text: String, center: Boolean = true) = TextView(this).apply {
+        fun bodyCell(text: String, name: Boolean = false) = TextView(this).apply {
             this.text = text
             textSize = 13f
             setPadding(dp(8), dp(4), dp(8), dp(4))
-            gravity = if (center) android.view.Gravity.CENTER else android.view.Gravity.START
-        }
-        fun nameCell(text: String) = bodyCell(text, center = false).apply {
-            minWidth = dp(NAME_COL_WIDTH_DP)
-            maxWidth = dp(NAME_COL_WIDTH_DP)
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
+            gravity = if (name) android.view.Gravity.START else android.view.Gravity.CENTER
+            if (name) {
+                minWidth = dp(NAME_W); maxWidth = dp(NAME_W)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
         }
         fun vSep() = View(this).apply {
             layoutParams = TableRow.LayoutParams(dp(1), TableRow.LayoutParams.MATCH_PARENT).apply {
@@ -757,38 +1114,41 @@ class PlayerManagementActivity : AppCompatActivity() {
             isShrinkAllColumns = false
             isStretchAllColumns = false
         }
-        val hdr1 = TableRow(this)
-        hdr1.addView(headerNameCell("Name"))
-        hdr1.addView(vSep())
-        hdr1.addView(headerCell("Current", span = 3))
-        hdr1.addView(vSep())
-        hdr1.addView(headerCell("Overall", span = 4))
-        table.addView(hdr1)
 
-        val hdr2 = TableRow(this)
-        hdr2.addView(headerCell("", span = 1, center = false, bold = false))
-        hdr2.addView(vSep())
-        listOf("G", "W", "L").forEach { hdr2.addView(headerCell(it)) }
-        hdr2.addView(vSep())
-        listOf("G", "W", "L", "Win%").forEach { hdr2.addView(headerCell(it)) }
-        table.addView(hdr2)
+        val r1 = TableRow(this)
+        r1.addView(headerNameCell("Name"))
+        r1.addView(vSep())
+        r1.addView(headerCell("Current", 3))
+        r1.addView(vSep())
+        r1.addView(headerCell("Overall", 4))
+        table.addView(r1)
 
-        rows.forEach { r ->
+        val r2 = TableRow(this)
+        r2.addView(bodyCell("", true))
+        r2.addView(vSep())
+        listOf("G", "W", "L").forEach { r2.addView(headerCell(it)) }
+        r2.addView(vSep())
+        listOf("G", "W", "L", "Win%").forEach { r2.addView(headerCell(it)) }
+        table.addView(r2)
+
+        rows.forEach { row ->
             val tr = TableRow(this)
-            tr.addView(nameCell(r.name))
+            tr.addView(bodyCell(row.name, true))
             tr.addView(vSep())
-            tr.addView(bodyCell(r.currentG.toString()))
-            tr.addView(bodyCell(r.currentW.toString()))
-            tr.addView(bodyCell(r.currentL.toString()))
+            tr.addView(bodyCell(row.currentG.toString()))
+            tr.addView(bodyCell(row.currentW.toString()))
+            tr.addView(bodyCell(row.currentL.toString()))
             tr.addView(vSep())
-            tr.addView(bodyCell(r.overallG.toString()))
-            tr.addView(bodyCell(r.overallW.toString()))
-            tr.addView(bodyCell(r.overallL.toString()))
-            tr.addView(bodyCell("${r.overallWinPct}%"))
+            tr.addView(bodyCell(row.overallG.toString()))
+            tr.addView(bodyCell(row.overallW.toString()))
+            tr.addView(bodyCell(row.overallL.toString()))
+            tr.addView(bodyCell("${row.overallWinPct}%"))
             table.addView(tr)
         }
         return table
     }
+
+    // ---------- Firestore Listener Helpers ----------
 
     private fun attachMatchesListener() {
         val currentSession = sessionId ?: return
@@ -805,10 +1165,10 @@ class PlayerManagementActivity : AppCompatActivity() {
                     }
                     return@addSnapshotListener
                 }
-                val hasPending = snap?.metadata?.hasPendingWrites() == true
+                val pending = snap?.metadata?.hasPendingWrites() == true
                 syncBanner?.apply {
-                    visibility = if (hasPending) View.VISIBLE else View.GONE
-                    if (hasPending) text = "Syncing… (offline or pending writes)"
+                    visibility = if (pending) View.VISIBLE else View.GONE
+                    if (pending) text = "Syncing… (offline/pending)"
                 }
             }
     }
@@ -818,386 +1178,9 @@ class PlayerManagementActivity : AppCompatActivity() {
         matchesListener = null
     }
 
-    // Helper
+    // ---------- Helpers ----------
+
     private fun playerById(id: String): Player? = allPlayers.firstOrNull { it.id == id }
-
-    // --- New sit-out flow (single selection with replacement if needed) ---
-    private fun showSitOutFlow() {
-        // Candidates: anyone not already sitting out and who is either resting or currently on a court
-        val onCourts = currentCourts.flatMap { court ->
-            val t = court.teams
-            if (t == null) emptyList() else t.first + t.second
-        }.filter { it.id !in sittingOutIds }
-
-        val resting = restingPlayers.filter { it.id !in sittingOutIds }
-        val candidates = (onCourts + resting)
-            .distinctBy { it.id }
-            .sortedBy { it.name.lowercase() }
-
-        if (candidates.isEmpty()) {
-            Toast.makeText(this, "No eligible players to sit out.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val names = candidates.map { it.name }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Select Player to Sit Out")
-            .setItems(names) { dialog, which ->
-                val selected = candidates[which]
-                dialog.dismiss()
-                val courtLoc = locatePlayerOnCourt(selected.id)
-                if (courtLoc == null) {
-                    // Player not currently playing (resting) -> move directly to sitting out
-                    val removed = restingPlayers.removeIf { it.id == selected.id }
-                    if (removed) {
-                        sittingOutIds.add(selected.id)
-                        Toast.makeText(this, "${selected.name} is now sitting out.", Toast.LENGTH_SHORT).show()
-                        updateRestingPlayersView()
-                    } else {
-                        Toast.makeText(this, "Player state changed; try again.", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    // Player is on a court -> need replacement
-                    promptReplacementForActivePlayer(selected, courtLoc)
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private data class CourtLocation(val courtIndex: Int, val teamIndex: Int, val posInTeam: Int)
-
-    private fun locatePlayerOnCourt(playerId: String): CourtLocation? {
-        currentCourts.forEachIndexed { ci, court ->
-            val teams = court.teams ?: return@forEachIndexed
-            val aIdx = teams.first.indexOfFirst { it.id == playerId }
-            if (aIdx >= 0) return CourtLocation(ci, 0, aIdx)
-            val bIdx = teams.second.indexOfFirst { it.id == playerId }
-            if (bIdx >= 0) return CourtLocation(ci, 1, bIdx)
-        }
-        return null
-    }
-
-    private fun promptReplacementForActivePlayer(player: Player, loc: CourtLocation) {
-        if (restingPlayers.isEmpty()) {
-            Toast.makeText(this, "No resting players available to replace ${player.name}.", Toast.LENGTH_LONG).show()
-            return
-        }
-        val replacements = restingPlayers.toList().sortedBy { it.name.lowercase() }
-        val names = replacements.map { it.name }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Replace ${player.name} with:")
-            .setItems(names) { d, which ->
-                val replacement = replacements[which]
-                d.dismiss()
-                applyReplacement(player, replacement, loc)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun applyReplacement(leaving: Player, replacement: Player, loc: CourtLocation) {
-        val court = currentCourts.getOrNull(loc.courtIndex)
-        val teams = court?.teams
-        if (court == null || teams == null) {
-            Toast.makeText(this, "Court changed; try again.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val newA = teams.first.toMutableList()
-        val newB = teams.second.toMutableList()
-        val targetList = if (loc.teamIndex == 0) newA else newB
-
-        // Validate the slot still has leaving
-        if (loc.posInTeam >= targetList.size || targetList[loc.posInTeam].id != leaving.id) {
-            Toast.makeText(this, "Player already moved; try again.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Execute replacement
-        targetList[loc.posInTeam] = replacement
-        court.teams = Pair(newA, newB)
-
-        // Remove replacement from resting queue
-        restingPlayers.removeIf { it.id == replacement.id }
-        restCount[replacement.id] = 0
-
-        // Move leaving to sitting out
-        sittingOutIds.add(leaving.id)
-
-        Toast.makeText(
-            this,
-            "${leaving.name} is now sitting out. Replaced by ${replacement.name}.",
-            Toast.LENGTH_SHORT
-        ).show()
-
-        courtAdapter.notifyItemChanged(loc.courtIndex)
-        updateRestingPlayersView()
-    }
-
-    // Restore dialog unchanged (multi-select restore)
-    private fun showRestoreDialog() {
-        if (sittingOutIds.isEmpty()) {
-            Toast.makeText(this, "No players are sitting out.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val candidates = sittingOutIds.mapNotNull { playerById(it) }.sortedBy { it.name.lowercase() }
-        val dialogView = layoutInflater.inflate(R.layout.dialog_add_late_player, null)
-        val chipGroup = dialogView.findViewById<ChipGroup>(R.id.chipGroupExistingPlayers)
-        val newPlayerNameEditText = dialogView.findViewById<EditText>(R.id.editTextNewPlayerName)
-        val addNewPlayerButton = dialogView.findViewById<Button>(R.id.buttonAddNewPlayer)
-        val existingPlayersTitle = dialogView.findViewById<TextView>(R.id.textViewExistingPlayersTitle)
-        newPlayerNameEditText.visibility = View.GONE
-        addNewPlayerButton.visibility = View.GONE
-        existingPlayersTitle.text = "Select players to Restore"
-        candidates.forEach { p ->
-            val chip = Chip(this).apply {
-                text = p.name
-                isCheckable = true
-                tag = p
-            }
-            chipGroup.addView(chip)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Restore Players")
-            .setView(dialogView)
-            .setPositiveButton("Restore") { _, _ ->
-                val selected = mutableListOf<Player>()
-                for (i in 0 until chipGroup.childCount) {
-                    val c = chipGroup.getChildAt(i) as Chip
-                    if (c.isChecked) selected += (c.tag as Player)
-                }
-                if (selected.isEmpty()) return@setPositiveButton
-                selected.forEach { p ->
-                    sittingOutIds.remove(p.id)
-                    restCount.putIfAbsent(p.id, 0)
-                    restingPlayers.add(p)
-                }
-                Toast.makeText(
-                    this,
-                    "Restored: ${selected.joinToString { it.name }}",
-                    Toast.LENGTH_SHORT
-                ).show()
-                updateRestingPlayersView()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    // Existing add-late-player dialog (unchanged except skip sitting out players)
-    private fun showAddLatePlayerDialog() {
-        val activePlayerIds = mutableSetOf<String>()
-        currentCourts.forEach { court ->
-            court.teams?.let { (a, b) ->
-                a.forEach { activePlayerIds.add(it.id) }
-                b.forEach { activePlayerIds.add(it.id) }
-            }
-        }
-        val availablePlayers = allPlayers.filter {
-            it.id !in activePlayerIds && it.id !in sittingOutIds
-        }
-        val dialogView = layoutInflater.inflate(R.layout.dialog_add_late_player, null)
-        val chipGroup = dialogView.findViewById<ChipGroup>(R.id.chipGroupExistingPlayers)
-        val newPlayerNameEditText = dialogView.findViewById<EditText>(R.id.editTextNewPlayerName)
-        val addNewPlayerButton = dialogView.findViewById<Button>(R.id.buttonAddNewPlayer)
-        val existingPlayersTitle = dialogView.findViewById<TextView>(R.id.textViewExistingPlayersTitle)
-
-        if (availablePlayers.isEmpty()) {
-            existingPlayersTitle.visibility = View.GONE
-            chipGroup.visibility = View.GONE
-        } else {
-            availablePlayers.forEach { player ->
-                val chip = Chip(this).apply {
-                    text = player.name
-                    isCheckable = true
-                    tag = player
-                }
-                chipGroup.addView(chip)
-            }
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Add Late Players")
-            .setView(dialogView)
-            .setPositiveButton("Add Selected") { _, _ ->
-                val selectedPlayers = mutableListOf<Player>()
-                for (i in 0 until chipGroup.childCount) {
-                    val chip = chipGroup.getChildAt(i) as Chip
-                    if (chip.isChecked) selectedPlayers.add(chip.tag as Player)
-                }
-                if (selectedPlayers.isNotEmpty()) {
-                    selectedPlayers.forEach {
-                        restCount[it.id] = 0
-                        sessionPlayerIds.add(it.id)
-                        sessionStats.putIfAbsent(it.id, SessionStats())
-                    }
-                    restingPlayers.addAll(selectedPlayers)
-                    updateRestingPlayersView()
-                    Toast.makeText(
-                        this,
-                        selectedPlayers.joinToString(", ") { it.name } + " added to the resting queue.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .create()
-
-        addNewPlayerButton.setOnClickListener {
-            val playerName = newPlayerNameEditText.text.toString().trim()
-            if (playerName.isNotEmpty()) {
-                addLatePlayer(playerName) {
-                    dialog.dismiss()
-                    showAddLatePlayerDialog()
-                }
-            } else {
-                Toast.makeText(this, "Player name cannot be empty.", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        dialog.show()
-    }
-
-    private fun addLatePlayer(playerName: String, onSuccess: () -> Unit) {
-        val normalizedName = playerName.lowercase()
-        val exists = allPlayers.any { it.name.equals(normalizedName, ignoreCase = true) }
-        if (exists) {
-            Toast.makeText(this, "$playerName already exists.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val newPlayer = Player(name = playerName, wins = 0, losses = 0, gamesPlayed = 0, winrate = 0.0)
-        playersCollection.document(normalizedName).set(newPlayer)
-            .addOnSuccessListener {
-                val withId = newPlayer.copy(id = normalizedName)
-                allPlayers.add(withId)
-                restingPlayers.add(withId)
-                restCount[withId.id] = 0
-                sessionPlayerIds.add(withId.id)
-                sessionStats.putIfAbsent(withId.id, SessionStats())
-                updateRestingPlayersView()
-                Toast.makeText(this, "$playerName added and is now resting.", Toast.LENGTH_SHORT).show()
-                onSuccess()
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Error adding player: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-    }
-
-    private fun addCourt() {
-        if (restingPlayers.size >= 4) {
-            val players = drawFairFromRestingQueueAvoid(4, null)
-            val teams = generateTeamsForCourt(players)
-            val newNumber = (currentCourts.maxOfOrNull { it.courtNumber } ?: 0) + 1
-            currentCourts.add(Court(teams, newNumber))
-            courtAdapter.notifyDataSetChanged()
-            updateRestingPlayersView()
-            Toast.makeText(this, "Court $newNumber added.", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Need at least 4 resting players to add a new court.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun showEditCourtDialog(courtIndex: Int) {
-        val court = currentCourts.getOrNull(courtIndex) ?: return
-        val (teamA, teamB) = court.teams ?: Pair(emptyList(), emptyList())
-        val dialogView = layoutInflater.inflate(R.layout.dialog_edit_court, null)
-        val rvTeamA = dialogView.findViewById<RecyclerView>(R.id.recyclerViewTeamA)
-        val rvTeamB = dialogView.findViewById<RecyclerView>(R.id.recyclerViewTeamB)
-        val rvResting = dialogView.findViewById<RecyclerView>(R.id.recyclerViewResting)
-        val restingTitle = dialogView.findViewById<TextView>(R.id.textViewRestingTitle)
-        val deleteButton = dialogView.findViewById<Button>(R.id.buttonDeleteCourt)
-
-        val teamAMutable = teamA.toMutableList()
-        val teamBMutable = teamB.toMutableList()
-        val restingMutable = restingPlayers.toMutableList()
-
-        val adapterA = EditCourtPlayerAdapter(teamAMutable)
-        val adapterB = EditCourtPlayerAdapter(teamBMutable)
-        val adapterResting = EditCourtPlayerAdapter(restingMutable)
-
-        var firstSelection: Player? = null
-        var firstList: MutableList<Player>? = null
-        val allAdapters = listOf(adapterA, adapterB, adapterResting)
-
-        fun handleSelection(player: Player, list: MutableList<Player>, @Suppress("UNUSED_PARAMETER") clicked: EditCourtPlayerAdapter) {
-            if (firstSelection == null) {
-                firstSelection = player
-                firstList = list
-                allAdapters.forEach { it.selectedPlayer = player; it.notifyDataSetChanged() }
-            } else {
-                if (firstSelection != player) {
-                    val p1 = firstSelection!!
-                    val list1 = firstList!!
-                    val i1 = list1.indexOf(p1)
-                    val i2 = list.indexOf(player)
-                    if (i1 != -1 && i2 != -1) {
-                        list1[i1] = player
-                        list[i2] = p1
-                    }
-                }
-                firstSelection = null
-                firstList = null
-                allAdapters.forEach { it.selectedPlayer = null; it.notifyDataSetChanged() }
-            }
-        }
-
-        adapterA.onPlayerSelected = { handleSelection(it, teamAMutable, adapterA) }
-        rvTeamA.layoutManager = LinearLayoutManager(this)
-        rvTeamA.adapter = adapterA
-
-        adapterB.onPlayerSelected = { handleSelection(it, teamBMutable, adapterB) }
-        rvTeamB.layoutManager = LinearLayoutManager(this)
-        rvTeamB.adapter = adapterB
-
-        if (restingMutable.isEmpty()) {
-            restingTitle.visibility = View.GONE
-            rvResting.visibility = View.GONE
-        } else {
-            adapterResting.onPlayerSelected = { handleSelection(it, restingMutable, adapterResting) }
-            rvResting.layoutManager = LinearLayoutManager(this)
-            rvResting.adapter = adapterResting
-        }
-
-        val mainDialog = AlertDialog.Builder(this)
-            .setTitle("Edit Court ${court.courtNumber}")
-            .setView(dialogView)
-            .setPositiveButton("Done") { _, _ ->
-                currentCourts[courtIndex].teams =
-                    if (teamAMutable.isNotEmpty() || teamBMutable.isNotEmpty()) Pair(teamAMutable, teamBMutable) else null
-                restingPlayers = LinkedList(restingMutable)
-                restingPlayers.forEach { p ->
-                    restCount.putIfAbsent(p.id, 0)
-                    sessionPlayerIds.add(p.id)
-                    sessionStats.putIfAbsent(p.id, SessionStats())
-                }
-                courtAdapter.notifyItemChanged(courtIndex)
-                updateRestingPlayersView()
-            }
-            .setNeutralButton("Cancel", null)
-            .create()
-
-        deleteButton.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("Delete Court")
-                .setMessage("Delete Court ${court.courtNumber}? Players will move to resting queue.")
-                .setPositiveButton("Delete") { _, _ ->
-                    val toRest = currentCourts[courtIndex].teams?.toList()?.flatMap { it } ?: emptyList()
-                    toRest.forEach {
-                        restCount[it.id] = 0
-                        sessionPlayerIds.add(it.id)
-                        sessionStats.putIfAbsent(it.id, SessionStats())
-                    }
-                    restingPlayers.addAll(toRest)
-                    currentCourts.removeAt(courtIndex)
-                    courtAdapter.notifyDataSetChanged()
-                    updateRestingPlayersView()
-                    mainDialog.dismiss()
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
-        }
-
-        mainDialog.show()
-    }
 
     override fun onDestroy() {
         super.onDestroy()
