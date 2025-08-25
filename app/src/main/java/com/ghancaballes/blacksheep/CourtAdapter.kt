@@ -151,9 +151,9 @@ class CourtAdapter(
                 // 61%–75% → orange
                 // >= 76% → red
                 when {
-                    wr <= 0.50 -> R.color.skill_green     // new: true green for <=50%
-                    wr <= 0.60 -> R.color.skill_low       // existing: yellow
-                    wr <= 0.75 -> R.color.skill_orange    // new: orange
+                    wr < 0.50 -> R.color.skill_green     // new: true green for <=50%
+                    wr < 0.60 -> R.color.skill_low       // existing: yellow
+                    wr < 0.75 -> R.color.skill_orange    // new: orange
                     else -> R.color.skill_high            // existing: red
                 }
             }
