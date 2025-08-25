@@ -1,51 +1,63 @@
 package com.ghancaballes.blacksheep
 
-import android.graphics.Color
+import android.graphics.Typeface
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 
+/**
+ * Adapter used in the "Edit Court" dialog for showing Team A, Team B, and Resting players.
+ *
+ * Enhancements:
+ *  - Optional display of session games count for resting players (showSessionGames = true).
+ *    Format: "Player Name (G: <sessionGames>)"
+ */
 class EditCourtPlayerAdapter(
-    private val players: List<Player>
+    private val players: MutableList<Player>,
+    private val sessionStats: Map<String, PlayerManagementActivity.SessionStats>? = null,
+    private val showSessionGames: Boolean = false
 ) : RecyclerView.Adapter<EditCourtPlayerAdapter.PlayerViewHolder>() {
 
-    // --- FIX: onPlayerSelected is now a public variable that can be assigned later ---
-    lateinit var onPlayerSelected: (Player) -> Unit
     var selectedPlayer: Player? = null
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PlayerViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(android.R.layout.simple_list_item_1, parent, false)
-        return PlayerViewHolder(view)
-    }
-
-    override fun onBindViewHolder(holder: PlayerViewHolder, position: Int) {
-        val player = players[position]
-        holder.bind(player)
-    }
-
-    override fun getItemCount(): Int = players.size
+    var onPlayerSelected: ((Player) -> Unit)? = null
 
     inner class PlayerViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val nameTextView: TextView = itemView.findViewById(android.R.id.text1)
+        private val nameText: TextView = itemView.findViewById(android.R.id.text1)
 
-        fun bind(player: Player) {
-            nameTextView.text = player.name
-
-            if (player == selectedPlayer) {
-                itemView.setBackgroundColor(Color.LTGRAY)
+        fun bind(player: Player, isSelected: Boolean) {
+            val displayName = if (showSessionGames) {
+                val games = sessionStats?.get(player.id)?.games ?: 0
+                "${player.name} (G:$games)"
             } else {
-                itemView.setBackgroundColor(Color.TRANSPARENT)
+                player.name
             }
+            nameText.text = displayName
+            nameText.setTypeface(null, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+            val color = if (isSelected)
+                ContextCompat.getColor(itemView.context, R.color.badminton_vs_blue)
+            else
+                ContextCompat.getColor(itemView.context, android.R.color.black)
+            nameText.setTextColor(color)
 
             itemView.setOnClickListener {
-                // Check if the handler has been initialized before calling it
-                if (::onPlayerSelected.isInitialized) {
-                    onPlayerSelected(player)
-                }
+                onPlayerSelected?.invoke(player)
             }
         }
     }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PlayerViewHolder {
+        val v = LayoutInflater.from(parent.context)
+            .inflate(android.R.layout.simple_list_item_1, parent, false)
+        return PlayerViewHolder(v)
+    }
+
+    override fun onBindViewHolder(holder: PlayerViewHolder, position: Int) {
+        val p = players[position]
+        holder.bind(p, p == selectedPlayer)
+    }
+
+    override fun getItemCount(): Int = players.size
 }
