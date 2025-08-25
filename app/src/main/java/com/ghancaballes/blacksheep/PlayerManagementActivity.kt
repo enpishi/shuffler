@@ -430,14 +430,14 @@ class PlayerManagementActivity : AppCompatActivity() {
                 val newWins = if (won) wins + 1 else wins
                 val newLosses = if (won) losses else losses + 1
                 val games = newWins + newLosses
-                val winRate = if (games > 0) newWins.toDouble() / games else 0.0
+                val winrate = if (games > 0) newWins.toDouble() / games else 0.0
                 tx.update(
                     s.reference,
                     mapOf(
                         "wins" to newWins,
                         "losses" to newLosses,
                         "gamesPlayed" to games,
-                        "winrate" to winRate,
+                        "winrate" to winrate,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -540,28 +540,60 @@ class PlayerManagementActivity : AppCompatActivity() {
     private data class CourtLocation(val courtIndex: Int, val teamIndex: Int, val posInTeam: Int)
 
     private fun showSitOutFlow() {
-        val onCourts = currentCourts.flatMap { c -> c.teams?.let { it.first + it.second } ?: emptyList() }
-            .filter { it.id !in sittingOutIds }
-        val resting = restingPlayers.filter { it.id !in sittingOutIds }
-        val candidates = (onCourts + resting).distinctBy { it.id }.sortedBy { it.name.lowercase() }
+        val playingCourtMap = mutableMapOf<String, Int>()
+        currentCourts.forEach { court ->
+            court.teams?.let { (a, b) ->
+                a.forEach { playingCourtMap[it.id] = court.courtNumber }
+                b.forEach { playingCourtMap[it.id] = court.courtNumber }
+            }
+        }
+        val playingPlayers = playingCourtMap.keys
+            .filter { it !in sittingOutIds }
+            .mapNotNull { id -> allPlayers.firstOrNull { it.id == id } }
+        val restingCandidates = restingPlayers.filter { it.id !in sittingOutIds }
+        val combined = (playingPlayers + restingCandidates).distinctBy { it.id }
 
-        if (candidates.isEmpty()) {
+        if (combined.isEmpty()) {
             Toast.makeText(this, "No eligible players.", Toast.LENGTH_SHORT).show()
             return
         }
+
+        val ordered = combined.sortedWith { p1, p2 ->
+            val c1 = playingCourtMap[p1.id]
+            val c2 = playingCourtMap[p2.id]
+            when {
+                c1 != null && c2 != null -> {
+                    val cmp = c1.compareTo(c2)
+                    if (cmp != 0) cmp else p1.name.lowercase().compareTo(p2.name.lowercase())
+                }
+                c1 != null && c2 == null -> -1
+                c1 == null && c2 != null -> 1
+                else -> p1.name.lowercase().compareTo(p2.name.lowercase())
+            }
+        }
+
+        val displayItems = ordered.map { p ->
+            val label = playingCourtMap[p.id]?.let { " (Court $it)" } ?: " (Resting)"
+            "${p.name}$label"
+        }.toTypedArray()
+
         AlertDialog.Builder(this)
             .setTitle("Select Player to Sit Out")
-            .setItems(candidates.map { it.name }.toTypedArray()) { d, idx ->
-                val player = candidates[idx]
-                d.dismiss()
-                val loc = locatePlayerOnCourt(player.id)
+            .setItems(displayItems) { dialog, which ->
+                val selectedPlayer = ordered[which]
+                dialog.dismiss()
+                val loc = locatePlayerOnCourt(selectedPlayer.id)
                 if (loc == null) {
-                    if (restingPlayers.removeIf { it.id == player.id }) {
-                        sittingOutIds.add(player.id)
-                        Toast.makeText(this, "${player.name} is sitting out.", Toast.LENGTH_SHORT).show()
+                    if (restingPlayers.removeIf { it.id == selectedPlayer.id }) {
+                        sittingOutIds.add(selectedPlayer.id)
+                        Toast.makeText(this, "${selectedPlayer.name} is sitting out.", Toast.LENGTH_SHORT).show()
                         updateRestingPlayersView()
+                    } else {
+                        Toast.makeText(this, "State changed; try again.", Toast.LENGTH_SHORT).show()
                     }
-                } else promptReplacementForActivePlayer(player, loc)
+                } else {
+                    promptReplacementForActivePlayer(selectedPlayer, loc)
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -618,6 +650,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         updateRestingPlayersView()
     }
 
+    // NEW simplified restore dialog (no 'Add New Player' section)
     private fun showRestoreDialog() {
         if (sittingOutIds.isEmpty()) {
             Toast.makeText(this, "No players sitting out.", Toast.LENGTH_SHORT).show()
@@ -625,22 +658,21 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
         val candidates = sittingOutIds.mapNotNull { playerById(it) }.sortedBy { it.name.lowercase() }
 
-        val view = layoutInflater.inflate(R.layout.dialog_add_late_player, null)
-        val chipGroup = view.findViewById<ChipGroup>(R.id.chipGroupExistingPlayers)
-        val nameEt = view.findViewById<EditText>(R.id.editTextNewPlayerName)
-        val addBtn = view.findViewById<Button>(R.id.buttonAddNewPlayer)
-        val title = view.findViewById<TextView>(R.id.textViewExistingPlayersTitle)
-        nameEt.visibility = View.GONE
-        addBtn.visibility = View.GONE
-        title.text = "Select players to Restore"
+        val view = layoutInflater.inflate(R.layout.dialog_restore_players, null)
+        val chipGroup = view.findViewById<ChipGroup>(R.id.chipGroupRestorePlayers)
+        val hintLabel = view.findViewById<TextView>(R.id.textViewRestoreHint)
 
-        candidates.forEach { p ->
-            val chip = Chip(this).apply {
-                text = p.name
-                isCheckable = true
-                tag = p
+        if (candidates.isEmpty()) {
+            hintLabel.text = "No players to restore."
+        } else {
+            candidates.forEach { p ->
+                val chip = Chip(this).apply {
+                    text = p.name
+                    isCheckable = true
+                    tag = p
+                }
+                chipGroup.addView(chip)
             }
-            chipGroup.addView(chip)
         }
 
         AlertDialog.Builder(this)
@@ -665,11 +697,9 @@ class PlayerManagementActivity : AppCompatActivity() {
             .show()
     }
 
-    // ---------- Late Player Dialog (FIX APPLIED HERE) ----------
+    // ---------- Late Player Dialog ----------
 
     private fun showAddLatePlayerDialog() {
-        // OLD (problematic) logic only excluded players on courts.
-        // FIX: Exclude every player already in the session (sessionPlayerIds) plus those sitting out.
         val availablePlayers = allPlayers.filter {
             it.id !in sessionPlayerIds && it.id !in sittingOutIds
         }
@@ -727,7 +757,7 @@ class PlayerManagementActivity : AppCompatActivity() {
             if (playerName.isNotEmpty()) {
                 addLatePlayer(playerName) {
                     dialog.dismiss()
-                    showAddLatePlayerDialog() // reopen with refreshed list
+                    showAddLatePlayerDialog() // reopen refreshed list
                 }
             } else {
                 Toast.makeText(this, "Player name cannot be empty.", Toast.LENGTH_SHORT).show()
