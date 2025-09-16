@@ -1133,6 +1133,7 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun showStatsDialog() {
         val rows = buildStatsRows()
+        val dateStr = getTodayDisplayDate()
         val hScroll = HorizontalScrollView(this)
         val vScroll = ScrollView(this).apply { isFillViewport = true }
         val table = buildStatsTable(rows)
@@ -1151,7 +1152,7 @@ class PlayerManagementActivity : AppCompatActivity() {
             )
         )
         AlertDialog.Builder(this)
-            .setTitle("Session Stats")
+            .setTitle("Session Stats ($dateStr)")
             .setView(hScroll)
             .setPositiveButton("Close", null)
             .show()
@@ -1289,5 +1290,20 @@ class PlayerManagementActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         detachMatchesListener()
+    }
+}
+
+private fun getTodayDisplayDate(): String {
+    return try {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            java.time.LocalDate.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy"))
+        } else {
+            // Legacy (pre-Oreo)
+            val sdf = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+            sdf.format(java.util.Date())
+        }
+    } catch (e: Exception) {
+        "" // Fallback: blank if something unexpected occurs
     }
 }
