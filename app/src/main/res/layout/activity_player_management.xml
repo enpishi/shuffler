@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Reworked layout:
-  - Resting players text moved to bottom.
-  - FloatingActionButton bottom-end toggles a hidden action menu card.
-  - Courts list fills available space.
-  - Setup container retained for pre-session configuration.
+  Patched layout:
+  - Added NestedScrollView (setupScroll) wrapping setupContainer for scrollable player chips.
+  - Moved Start Session button outside scrollable area and anchored to bottom.
+  - Added bottom padding inside setupContainer so last chips stay above the fixed button.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -28,7 +27,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Sync banner (hidden when not syncing) -->
+    <!-- Sync banner -->
     <TextView
         android:id="@+id/syncBanner"
         android:layout_width="0dp"
@@ -42,72 +41,89 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- SETUP CONTAINER (shown before session starts) -->
-    <LinearLayout
-        android:id="@+id/setupContainer"
+    <!-- Scrollable setup content -->
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/setupScroll"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        android:clipToPadding="false"
         app:layout_constraintTop_toBottomOf="@id/syncBanner"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/buttonStartSession">
 
-        <!-- Add Player Row -->
         <LinearLayout
+            android:id="@+id/setupContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:paddingBottom="120dp">
 
+            <!-- Add Player Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <EditText
+                    android:id="@+id/editTextPlayerName"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Player name" />
+
+                <Button
+                    android:id="@+id/buttonAddPlayer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Add"/>
+            </LinearLayout>
+
+            <!-- Court Count -->
             <EditText
-                android:id="@+id/editTextPlayerName"
-                android:layout_width="0dp"
+                android:id="@+id/editTextCourtCount"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="Player name" />
+                android:hint="Number of courts"
+                android:inputType="number"
+                android:layout_marginTop="12dp"/>
 
-            <Button
-                android:id="@+id/buttonAddPlayer"
-                android:layout_width="wrap_content"
+            <!-- Player Chips -->
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/playerChipGroup"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Add"/>
+                android:isScrollContainer="false"
+                android:layout_marginTop="12dp"
+                app:singleLine="false"
+                app:selectionRequired="false"
+                app:singleSelection="false"/>
+
+            <!-- (Legacy hidden list if needed) -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerViewPlayers"
+                android:layout_width="match_parent"
+                android:layout_height="180dp"
+                android:visibility="gone"
+                android:layout_marginTop="8dp"/>
+
+            <!-- (Start Session button moved out of this container) -->
+
         </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
-        <!-- Court Count -->
-        <EditText
-            android:id="@+id/editTextCourtCount"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Number of courts"
-            android:inputType="number"
-            android:layout_marginTop="12dp"/>
-
-        <!-- Player Chips (selection) -->
-        <com.google.android.material.chip.ChipGroup
-            android:id="@+id/playerChipGroup"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:isScrollContainer="false"
-            android:layout_marginTop="12dp"
-            app:singleLine="false"
-            app:selectionRequired="false"
-            app:singleSelection="false"/>
-
-        <!-- (Legacy hidden list if needed) -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recyclerViewPlayers"
-            android:layout_width="match_parent"
-            android:layout_height="180dp"
-            android:visibility="gone"
-            android:layout_marginTop="8dp"/>
-
-        <Button
-            android:id="@+id/buttonStartSession"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Start Session"
-            android:layout_marginTop="16dp"/>
-    </LinearLayout>
+    <!-- Start Session button fixed at bottom (visible only in setup mode) -->
+    <Button
+        android:id="@+id/buttonStartSession"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Start Session"
+        android:layout_margin="16dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
 
     <!-- COURTS RECYCLER (Shown during active session) -->
     <androidx.recyclerview.widget.RecyclerView
@@ -123,7 +139,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- RESTING PLAYERS (moved to bottom) -->
+    <!-- RESTING PLAYERS -->
     <TextView
         android:id="@+id/textViewRestingPlayers"
         android:layout_width="0dp"
@@ -140,7 +156,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/fabMenu"/>
 
-    <!-- ACTION MENU CARD (hidden stack of 6 buttons) -->
+    <!-- ACTION MENU CARD -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/actionMenuContainer"
         android:layout_width="wrap_content"
