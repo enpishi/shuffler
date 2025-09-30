@@ -11,18 +11,28 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Blacksheep">
+
+        <!-- Splash video launcher -->
         <activity
-            android:name=".PlayerManagementActivity"
-            android:exported="false" />
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
+            android:name=".SplashVideoActivity"
+            android:exported="true"
+            android:theme="@style/Theme.BlackSheep.SplashVideo"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Main activity (post-splash landing or login) -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true" />
+
+        <!-- Player management screen -->
+        <activity
+            android:name=".PlayerManagementActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

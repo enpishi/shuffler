@@ -4,8 +4,11 @@ import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 
 class CourtAdapter(
@@ -28,6 +31,9 @@ class CourtAdapter(
         val buttonB: MaterialButton = v.findViewById(R.id.buttonWinnerTeamB)
         val editBtn: MaterialButton = v.findViewById(R.id.buttonEditCourt)
     }
+
+    private val RecyclerView.ViewHolder.safePos: Int
+        get() = if (adapterPosition != RecyclerView.NO_POSITION) adapterPosition else RecyclerView.NO_POSITION
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CourtVH {
         val v = LayoutInflater.from(parent.context).inflate(R.layout.court_item, parent, false)
@@ -53,19 +59,122 @@ class CourtAdapter(
             bindPlayer(holder.player3, teamA.getOrNull(1))
             bindPlayer(holder.player2, teamB.getOrNull(0))
             bindPlayer(holder.player4, teamB.getOrNull(1))
+
+            holder.buttonA.setOnClickListener {
+                val idx = holder.safePos
+                if (idx == RecyclerView.NO_POSITION) return@setOnClickListener
+                showConfirmWinnerSheet(
+                    holder.itemView,
+                    courtIndex = idx,
+                    courtNumber = court.courtNumber,
+                    winners = teamA,
+                    losers = teamB,
+                    winningLabel = "Team A"
+                ) {
+                    onGameFinished(teamA, teamB, idx)
+                }
+            }
+
+            holder.buttonB.setOnClickListener {
+                val idx = holder.safePos
+                if (idx == RecyclerView.NO_POSITION) return@setOnClickListener
+                showConfirmWinnerSheet(
+                    holder.itemView,
+                    courtIndex = idx,
+                    courtNumber = court.courtNumber,
+                    winners = teamB,
+                    losers = teamA,
+                    winningLabel = "Team B"
+                ) {
+                    onGameFinished(teamB, teamA, idx)
+                }
+            }
         } else {
             listOf(holder.player1, holder.player2, holder.player3, holder.player4).forEach {
                 bindPlayer(it, null)
             }
+            holder.buttonA.setOnClickListener(null)
+            holder.buttonB.setOnClickListener(null)
         }
 
-        holder.buttonA.setOnClickListener {
-            courts[position].teams?.let { t -> onGameFinished(t.first, t.second, position) }
+        holder.editBtn.setOnClickListener {
+            val idx = holder.safePos
+            if (idx != RecyclerView.NO_POSITION) onEditCourt(idx)
         }
-        holder.buttonB.setOnClickListener {
-            courts[position].teams?.let { t -> onGameFinished(t.second, t.first, position) }
+    }
+
+    private fun showConfirmWinnerSheet(
+        anchorView: View,
+        courtIndex: Int,
+        courtNumber: Int,
+        winners: List<Player>,
+        losers: List<Player>,
+        winningLabel: String,
+        onConfirm: () -> Unit
+    ) {
+        val ctx = anchorView.context
+        val dialog = BottomSheetDialog(ctx)
+        val view = LayoutInflater.from(ctx).inflate(R.layout.bottom_sheet_confirm_winner, null)
+
+        val title = view.findViewById<TextView>(R.id.textConfirmTitle)
+        val courtLabel = view.findViewById<TextView>(R.id.textCourtLabel)
+        val winnersCol = view.findViewById<LinearLayout>(R.id.listWinners)
+        val losersCol = view.findViewById<LinearLayout>(R.id.listLosers)
+        val btnCancel = view.findViewById<TextView>(R.id.buttonCancel)
+        val btnRecord = view.findViewById<TextView>(R.id.buttonRecord)
+
+
+        title.text = "Confirm $winningLabel Win"
+        courtLabel.text = "Court $courtNumber"
+
+        winners.forEach { addPlayerRow(ctx, winnersCol, it, isWinner = true) }
+        losers.forEach { addPlayerRow(ctx, losersCol, it, isWinner = false) }
+
+        // (Optional) disable button for 500ms to prevent accidental double tap
+        btnRecord.isEnabled = false
+        btnRecord.postDelayed({ btnRecord.isEnabled = true }, 500)
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        btnRecord.setOnClickListener {
+            // (Optional) capture scores here if you extend schema
+            // val wScore = editWinnerScore.text.toString().toIntOrNull()
+            // val lScore = editLoserScore.text.toString().toIntOrNull()
+            dialog.dismiss()
+            onConfirm()
         }
-        holder.editBtn.setOnClickListener { onEditCourt(position) }
+
+        dialog.setContentView(view)
+        dialog.show()
+    }
+
+    private fun addPlayerRow(
+        context: android.content.Context,
+        parent: LinearLayout,
+        player: Player,
+        isWinner: Boolean
+    ) {
+        val row = LayoutInflater.from(context)
+            .inflate(R.layout.item_confirm_player_line, parent, false)
+
+        val name = row.findViewById<TextView>(R.id.textPlayerName)
+        val meta = row.findViewById<TextView>(R.id.textMeta)
+
+        val streak = winStreakProvider?.invoke(player) ?: 0
+        val flame = if (streak >= 3) " 🔥" else ""
+        name.text = player.name + flame
+
+        // Meta: overall record + winrate
+        val games = player.gamesPlayed
+        val wrPct = if (games > 0) (player.winrate * 100).toInt() else 0
+        meta.text = "${player.wins}/${player.losses}  ${wrPct}%"
+
+        // Background tint using your palette
+        val (bg, fg) = colorForWinrate(player)
+        row.setBackgroundColor(bg.adjustAlpha(if (isWinner) 1.0f else 0.82f))
+        name.setTextColor(fg)
+        meta.setTextColor(fg.adjustForMeta())
+
+        parent.addView(row)
     }
 
     private fun bindPlayer(tv: TextView, player: Player?) {
@@ -83,12 +192,9 @@ class CourtAdapter(
         tv.text = player.name + flame
     }
 
-    // New inverted palette mapping (higher winrate -> warmer colors per your spec)
+    // New color scheme mapping
     private fun colorForWinrate(p: Player): Pair<Int, Int> {
-        val games = p.gamesPlayed
-        if (games < 10) {
-            return Pair(Color.parseColor("#9E9E9E"), Color.WHITE) // Neutral Gray
-        }
+        if (p.gamesPlayed < 10) return Pair(Color.parseColor("#9E9E9E"), Color.WHITE)
         val wr = p.winrate
         return when {
             wr < 0.40 -> Pair(Color.parseColor("#C8E6C9"), Color.BLACK)      // Light Green
@@ -96,7 +202,22 @@ class CourtAdapter(
             wr < 0.60 -> Pair(Color.parseColor("#2E7D32"), Color.WHITE)      // Dark Green
             wr < 0.70 -> Pair(Color.parseColor("#EF6C00"), Color.WHITE)      // Dark Orange
             wr < 0.80 -> Pair(Color.parseColor("#AD1457"), Color.WHITE)      // Dark Pink
-            else ->       Pair(Color.parseColor("#B71C1C"), Color.WHITE)      // Very Dark Red (≥80%)
+            else -> Pair(Color.parseColor("#B71C1C"), Color.WHITE)           // Very Dark Red
         }
+    }
+
+    // Utility extensions
+    private fun Int.adjustAlpha(factor: Float): Int {
+        val a = (Color.alpha(this) * factor).toInt().coerceIn(0, 255)
+        return Color.argb(a, Color.red(this), Color.green(this), Color.blue(this))
+    }
+
+    private fun Int.adjustForMeta(): Int {
+        // Slightly dim meta text if foreground is very bright
+        val r = Color.red(this)
+        val g = Color.green(this)
+        val b = Color.blue(this)
+        val luminance = (0.299 * r + 0.587 * g + 0.114 * b)
+        return if (luminance > 180) Color.parseColor("#444444") else this
     }
 }

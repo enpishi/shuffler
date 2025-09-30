@@ -41,16 +41,38 @@
     <style name="Theme.Blacksheep" parent="Theme.BlackSheep"/>
 
     <style name="CourtPlayerCellStyle">
-    <item name="android:layout_width">0dp</item>
-    <item name="android:layout_height">0dp</item>
-    <item name="android:layout_columnWeight">1</item>
-    <item name="android:layout_rowWeight">1</item>
-    <item name="android:gravity">center</item>
-    <item name="android:textSize">13sp</item>
-    <item name="android:textStyle">bold</item>
-    <item name="android:maxLines">2</item>
-    <item name="android:ellipsize">end</item>
-    <item name="android:padding">4dp</item>
-    <item name="android:background">@drawable/bg_player_cell_neutral</item>
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_columnWeight">1</item>
+        <item name="android:layout_rowWeight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:padding">4dp</item>
+        <item name="android:background">@drawable/bg_player_cell_neutral</item>
     </style>
+
+    <!-- Splash Video Theme (fullscreen video intro) -->
+    <style name="Theme.BlackSheep.SplashVideo" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Core background -->
+        <item name="android:windowBackground">@android:color/white</item>
+
+        <!-- Fullscreen / cutout -->
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+
+        <!-- System bar colors -->
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+
+        <!-- Light (dark icons) system bars -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+
+        <!-- Prevent automatic darkening -->
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+
 </resources>

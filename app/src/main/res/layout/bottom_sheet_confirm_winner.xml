@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginStart="8dp"
+    android:layout_marginEnd="8dp"
+    android:layout_marginTop="4dp"
+    android:layout_marginBottom="12dp"
+    app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.MediumComponent"
+    app:cardElevation="4dp"
+    app:cardUseCompatPadding="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="20dp">
+
+        <View
+            android:layout_width="36dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:background="@drawable/bg_sheet_handle"
+            android:alpha="0.35"
+            android:layout_marginBottom="12dp"/>
+
+        <TextView
+            android:id="@+id/textConfirmTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Confirm Result"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:paddingBottom="4dp"/>
+
+        <TextView
+            android:id="@+id/textCourtLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Court 1"
+            android:textSize="13sp"
+            android:textColor="#666666"
+            android:paddingBottom="12dp"/>
+
+        <LinearLayout
+            android:id="@+id/containerTeams"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/columnWinners"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:paddingEnd="8dp">
+
+                <TextView
+                    android:id="@+id/labelWinners"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Winning Team"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:paddingBottom="6dp"/>
+
+                <LinearLayout
+                    android:id="@+id/listWinners"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/columnLosers"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:paddingStart="8dp">
+
+                <TextView
+                    android:id="@+id/labelLosers"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Opponents"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:paddingBottom="6dp"/>
+
+                <LinearLayout
+                    android:id="@+id/listLosers"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"/>
+            </LinearLayout>
+        </LinearLayout>
+
+
+
+        <TextView
+            android:id="@+id/textWarning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="You can’t undo once recorded."
+            android:textSize="11sp"
+            android:textColor="#B00020"
+            android:paddingTop="10dp"
+            android:paddingBottom="8dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/buttonCancel"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="Cancel"
+                android:textAllCaps="true"
+                android:textStyle="bold"
+                android:textColor="#666"/>
+
+            <View
+                android:layout_width="12dp"
+                android:layout_height="1dp"/>
+
+            <TextView
+                android:id="@+id/buttonRecord"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="Record Result"
+                android:textAllCaps="true"
+                android:textStyle="bold"
+                android:textColor="@android:color/white"
+                android:background="@drawable/bg_primary_btn"/>
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>
