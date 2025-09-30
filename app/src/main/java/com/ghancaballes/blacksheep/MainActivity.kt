@@ -1,13 +1,13 @@
 package com.ghancaballes.blacksheep
 
 import android.content.Intent
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import android.util.Log            // <-- Added import
+import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FieldValue
@@ -41,12 +41,10 @@ class MainActivity : AppCompatActivity() {
         registerButton.setOnClickListener {
             val email = emailEditText.text.toString().trim()
             val password = passwordEditText.text.toString().trim()
-
             if (email.isEmpty() || password.isEmpty()) {
                 Toast.makeText(this, "Please fill in all fields.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-
             auth.createUserWithEmailAndPassword(email, password)
                 .addOnCompleteListener(this) { task ->
                     if (task.isSuccessful) {
@@ -77,12 +75,10 @@ class MainActivity : AppCompatActivity() {
         loginButton.setOnClickListener {
             val email = emailEditText.text.toString().trim()
             val password = passwordEditText.text.toString().trim()
-
             if (email.isEmpty() || password.isEmpty()) {
                 Toast.makeText(this, "Please fill in all fields.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-
             auth.signInWithEmailAndPassword(email, password)
                 .addOnCompleteListener(this) { task ->
                     if (task.isSuccessful) {
@@ -156,7 +152,6 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Invalid email format.", Toast.LENGTH_SHORT).show()
             return
         }
-
         auth.sendPasswordResetEmail(email)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
@@ -168,7 +163,6 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     val ex = task.exception
                     val msg = ex?.message ?: "Could not send reset email."
-                    // Still show generic message to avoid account enumeration
                     Toast.makeText(
                         this,
                         "If an account exists for that email, a reset link has been sent.",

@@ -5,9 +5,8 @@
     android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/white">
+    android:background="@android:color/white">
 
-    <!-- Title -->
     <TextView
         android:id="@+id/textViewTitle"
         android:layout_width="0dp"
@@ -16,17 +15,17 @@
         android:paddingEnd="20dp"
         android:paddingTop="20dp"
         android:text="Session Setup"
-        android:textAppearance="?attr/textAppearanceHeadline6"
+        android:textSize="20sp"
+        android:textStyle="bold"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Sync banner -->
     <TextView
         android:id="@+id/syncBanner"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="@color/skill_low"
+        android:background="@android:color/darker_gray"
         android:padding="6dp"
         android:text="Syncing…"
         android:textColor="@android:color/black"
@@ -35,7 +34,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Scrollable setup content -->
     <androidx.core.widget.NestedScrollView
         android:id="@+id/setupScroll"
         android:layout_width="0dp"
@@ -48,76 +46,177 @@
         app:layout_constraintBottom_toTopOf="@id/buttonStartSession">
 
         <LinearLayout
-            android:id="@+id/setupContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp"
             android:paddingBottom="120dp">
 
-            <!-- Add Player Row -->
-            <LinearLayout
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                app:cardCornerRadius="18dp"
+                app:cardElevation="4dp"
+                android:animateLayoutChanges="true">
 
-                <EditText
-                    android:id="@+id/editTextPlayerName"
-                    android:layout_width="0dp"
+                <LinearLayout
+                    android:id="@+id/setupContainer"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:hint="Player name" />
+                    android:orientation="vertical"
+                    android:padding="18dp">
 
-                <Button
-                    android:id="@+id/buttonAddPlayer"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Add"/>
-            </LinearLayout>
+                    <TextView
+                        android:id="@+id/setupSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Configure players and courts"
+                        android:textColor="@android:color/darker_gray"
+                        android:textSize="14sp"/>
 
-            <!-- Court Count -->
-            <EditText
-                android:id="@+id/editTextCourtCount"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Number of courts"
-                android:inputType="number"
-                android:layout_marginTop="12dp"/>
+                    <LinearLayout
+                        android:id="@+id/playerAddRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:gravity="center_vertical"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
 
-            <!-- Player Chips -->
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/playerChipGroup"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:isScrollContainer="false"
-                android:layout_marginTop="12dp"
-                app:singleLine="false"
-                app:selectionRequired="false"
-                app:singleSelection="false"/>
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/tilPlayerName"
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            app:endIconMode="clear_text">
 
-            <!-- (Legacy hidden list if needed) -->
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recyclerViewPlayers"
-                android:layout_width="match_parent"
-                android:layout_height="180dp"
-                android:visibility="gone"
-                android:layout_marginTop="8dp"/>
+                            <AutoCompleteTextView
+                                android:id="@+id/autoCompletePlayerName"
+                                android:layout_width="match_parent"
+                                android:layout_height="56dp"
+                                android:gravity="center_vertical"
+                                android:hint="Add or select player"
+                                android:imeOptions="actionDone"
+                                android:inputType="textPersonName"
+                                android:completionThreshold="1"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"/>
+                        </com.google.android.material.textfield.TextInputLayout>
 
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/buttonAddPlayerManual"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="56dp"
+                            android:layout_marginStart="12dp"
+                            android:minWidth="0dp"
+                            android:paddingStart="20dp"
+                            android:paddingEnd="24dp"
+                            android:text="Add"
+                            android:textAllCaps="false"
+                            android:textSize="14sp"
+                            app:icon="@drawable/ic_add_24"
+                            app:iconTint="?attr/colorPrimary"
+                            app:iconGravity="textStart"
+                            app:iconPadding="8dp"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/labelCourts"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="22dp"
+                        android:text="Courts"
+                        android:textStyle="bold"
+                        android:textSize="16sp"/>
+
+                    <!-- UPDATED STEPPER WITH TRIANGLES -->
+                    <LinearLayout
+                        android:id="@+id/courtStepper"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:baselineAligned="false">
+
+                        <ImageButton
+                            android:id="@+id/buttonCourtMinus"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:scaleType="centerInside"
+                            android:padding="6dp"
+                            android:src="@drawable/ic_triangle_left_purple"
+                            android:contentDescription="Decrease courts"
+                            android:tint="@null"/>
+
+                        <TextView
+                            android:id="@+id/textCourtCount"
+                            android:layout_width="60dp"
+                            android:layout_height="40dp"
+                            android:gravity="center"
+                            android:text="1"
+                            android:textSize="22sp"
+                            android:textStyle="bold"/>
+
+                        <ImageButton
+                            android:id="@+id/buttonCourtPlus"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:scaleType="centerInside"
+                            android:padding="6dp"
+                            android:src="@drawable/ic_triangle_right_purple"
+                            android:contentDescription="Increase courts"
+                            android:tint="@null"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/labelPlayers"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="24dp"
+                        android:text="Selected Players"
+                        android:textStyle="bold"
+                        android:textSize="16sp"/>
+
+                    <com.google.android.material.chip.ChipGroup
+                        android:id="@+id/playerChipGroup"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        app:singleLine="false"
+                        app:singleSelection="false"
+                        app:selectionRequired="false"
+                        android:animateLayoutChanges="true"/>
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recyclerViewPlayers"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:visibility="gone"/>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <!-- Start Session button -->
-    <Button
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/buttonStartSession"
+        style="?attr/materialButtonStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Start Session"
         android:layout_margin="16dp"
+        android:text="Start Session"
+        android:textAllCaps="false"
+        app:icon="@android:drawable/ic_media_play"
+        app:iconPadding="8dp"
+        app:iconGravity="textStart"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Courts (active session) -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerViewCourts"
         android:layout_width="0dp"
@@ -131,7 +230,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Resting players -->
     <TextView
         android:id="@+id/textViewRestingPlayers"
         android:layout_width="0dp"
@@ -140,15 +238,13 @@
         android:paddingEnd="16dp"
         android:paddingTop="8dp"
         android:paddingBottom="12dp"
-        android:text="Resting: "
-        android:background="@android:color/transparent"
-        android:visibility="gone"
+        android:text="Resting:"
         android:textStyle="bold"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/fabMenu"/>
 
-    <!-- Action menu card -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/actionMenuContainer"
         android:layout_width="wrap_content"
@@ -214,7 +310,6 @@
                 android:text="RESTORE"
                 android:layout_marginTop="8dp"/>
 
-            <!-- SIGN OUT BUTTON ADDED -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/buttonSignOut"
                 style="?attr/materialButtonOutlinedStyle"
@@ -222,11 +317,9 @@
                 android:layout_height="wrap_content"
                 android:text="SIGN OUT"
                 android:layout_marginTop="8dp"/>
-
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- FAB -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fabMenu"
         android:layout_width="wrap_content"
@@ -236,9 +329,7 @@
         app:backgroundTint="@color/purple_500"
         app:tint="@android:color/white"
         android:visibility="gone"
-        app:maxImageSize="24dp"
+        android:layout_margin="24dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_margin="24dp"/>
-
+        app:layout_constraintEnd_toEndOf="parent"/>
 </androidx.constraintlayout.widget.ConstraintLayout>
