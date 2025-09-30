@@ -6,12 +6,11 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
-/**
- * Single-line stats: Name | G/W/L | G/W/L Win%
- * No "Cur:" or "All:" prefixes.
- */
-class StatsAdapter(private val rows: List<StatsRow>) :
-    RecyclerView.Adapter<StatsAdapter.StatVH>() {
+class StatsAdapter(
+    private val rows: List<StatsRow>,
+    private val playerLookup: Map<String, Player>,
+    var winStreakProvider: ((Player) -> Int)? = null
+) : RecyclerView.Adapter<StatsAdapter.StatVH>() {
 
     inner class StatVH(v: View) : RecyclerView.ViewHolder(v) {
         val name: TextView = v.findViewById(R.id.textStatName)
@@ -27,7 +26,10 @@ class StatsAdapter(private val rows: List<StatsRow>) :
 
     override fun onBindViewHolder(holder: StatVH, position: Int) {
         val r = rows[position]
-        holder.name.text = r.name
+        val p = playerLookup[r.playerId]
+        val streak = p?.let { winStreakProvider?.invoke(it) } ?: 0
+        val flame = if (streak >= 3) " 🔥" else ""
+        holder.name.text = r.name + flame
         holder.current.text = "${r.currentG}/${r.currentW}/${r.currentL}"
         holder.overall.text = "${r.overallG}/${r.overallW}/${r.overallL} ${r.overallWinPct}%"
     }

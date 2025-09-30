@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Root of the stats dialog -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/statsRootContainer"
@@ -11,29 +10,47 @@
     android:paddingEnd="20dp"
     android:paddingBottom="12dp">
 
-    <!-- Title with date (set in code) -->
     <TextView
         android:id="@+id/textStatsTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Session Stats (Date)"
+        android:text="Session Stats"
         android:textStyle="bold"
         android:textSize="16sp"
         android:paddingBottom="10dp"/>
 
-    <!-- Column Header -->
     <include
         android:id="@+id/includeHeader"
         layout="@layout/item_stat_header"/>
 
-    <!-- List -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerViewStats"
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:maxHeight="420dp"
         android:overScrollMode="never"
-        android:nestedScrollingEnabled="false"
         android:paddingTop="4dp"
-        android:paddingBottom="4dp"/>
+        android:paddingBottom="4dp">
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerViewStats"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:overScrollMode="never"
+                android:nestedScrollingEnabled="false"/>
+        </LinearLayout>
+    </ScrollView>
+
+    <TextView
+        android:id="@+id/textStatsLegend"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="&lt;10g Gray | &lt;40% Light Green | 40–49% Mid Green | 50–59% Dark Green | 60–69% Dark Orange | 70–79% Dark Pink | ≥80% Very Dark Red | 🔥 Streak ≥3"
+        android:textSize="11sp"
+        android:paddingTop="6dp"
+        android:textColor="@color/bs_on_surface_variant"/>
 </LinearLayout>

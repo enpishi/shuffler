@@ -9,7 +9,6 @@
     android:paddingEnd="20dp"
     android:paddingBottom="20dp">
 
-    <!-- Drag handle -->
     <View
         android:layout_width="36dp"
         android:layout_height="4dp"
@@ -22,19 +21,19 @@
         android:id="@+id/textReplaceTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Replace Player"
+        android:text="Replace"
         android:textSize="16sp"
         android:textStyle="bold"
-        android:paddingBottom="12dp"/>
+        android:paddingBottom="4dp"/>
 
     <TextView
         android:id="@+id/textReplaceSubtitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Select resting player to substitute"
+        android:text="Select a resting player"
         android:textSize="13sp"
-        android:paddingBottom="8dp"
-        android:textColor="@color/bs_on_surface_variant"/>
+        android:textColor="@color/bs_on_surface_variant"
+        android:paddingBottom="12dp"/>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerViewReplacementPlayers"
@@ -42,16 +41,14 @@
         android:layout_height="400dp"
         android:overScrollMode="never"/>
 
-    <!-- Optional cancel button aligned right -->
     <TextView
         android:id="@+id/buttonCancelReplace"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Cancel"
-        android:textSize="13sp"
         android:textStyle="bold"
-        android:paddingTop="14dp"
-        android:paddingBottom="4dp"
-        android:textColor="@color/bs_primary"
-        android:layout_gravity="end"/>
+        android:textSize="13sp"
+        android:layout_gravity="end"
+        android:paddingTop="12dp"
+        android:textColor="@color/bs_primary"/>
 </LinearLayout>

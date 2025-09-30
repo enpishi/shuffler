@@ -1,6 +1,7 @@
 package com.ghancaballes.blacksheep
 
 data class StatsRow(
+    val playerId: String,
     val name: String,
     val currentG: Int,
     val currentW: Int,

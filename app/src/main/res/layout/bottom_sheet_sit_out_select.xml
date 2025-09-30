@@ -31,4 +31,15 @@
         android:layout_width="match_parent"
         android:layout_height="400dp"
         android:overScrollMode="never"/>
+
+    <TextView
+        android:id="@+id/buttonCancelSitOut"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Cancel"
+        android:textStyle="bold"
+        android:textSize="13sp"
+        android:layout_gravity="end"
+        android:paddingTop="12dp"
+        android:textColor="@color/bs_primary"/>
 </LinearLayout>
