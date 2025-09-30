@@ -1,10 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Patched layout:
-  - Added NestedScrollView (setupScroll) wrapping setupContainer for scrollable player chips.
-  - Moved Start Session button outside scrollable area and anchored to bottom.
-  - Added bottom padding inside setupContainer so last chips stay above the fixed button.
--->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -109,12 +103,10 @@
                 android:visibility="gone"
                 android:layout_marginTop="8dp"/>
 
-            <!-- (Start Session button moved out of this container) -->
-
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <!-- Start Session button fixed at bottom (visible only in setup mode) -->
+    <!-- Start Session button -->
     <Button
         android:id="@+id/buttonStartSession"
         android:layout_width="0dp"
@@ -125,7 +117,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <!-- COURTS RECYCLER (Shown during active session) -->
+    <!-- Courts (active session) -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerViewCourts"
         android:layout_width="0dp"
@@ -139,7 +131,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- RESTING PLAYERS -->
+    <!-- Resting players -->
     <TextView
         android:id="@+id/textViewRestingPlayers"
         android:layout_width="0dp"
@@ -156,7 +148,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/fabMenu"/>
 
-    <!-- ACTION MENU CARD -->
+    <!-- Action menu card -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/actionMenuContainer"
         android:layout_width="wrap_content"
@@ -221,10 +213,20 @@
                 android:layout_height="wrap_content"
                 android:text="RESTORE"
                 android:layout_marginTop="8dp"/>
+
+            <!-- SIGN OUT BUTTON ADDED -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonSignOut"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="SIGN OUT"
+                android:layout_marginTop="8dp"/>
+
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- FAB MENU TOGGLE -->
+    <!-- FAB -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fabMenu"
         android:layout_width="wrap_content"

@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import android.util.Log            // <-- Added import
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FieldValue
@@ -34,6 +36,7 @@ class MainActivity : AppCompatActivity() {
         val passwordEditText = findViewById<EditText>(R.id.editTextPassword)
         val loginButton = findViewById<Button>(R.id.buttonLogin)
         val registerButton = findViewById<Button>(R.id.buttonRegister)
+        val forgotPasswordButton = findViewById<Button?>(R.id.buttonForgotPassword)
 
         registerButton.setOnClickListener {
             val email = emailEditText.text.toString().trim()
@@ -52,7 +55,6 @@ class MainActivity : AppCompatActivity() {
                             Toast.makeText(baseContext, "No user ID after registration.", Toast.LENGTH_LONG).show()
                             return@addOnCompleteListener
                         }
-                        // Create a user doc to namespace data
                         val userData = mapOf(
                             "email" to email,
                             "createdAt" to FieldValue.serverTimestamp()
@@ -89,7 +91,6 @@ class MainActivity : AppCompatActivity() {
                             Toast.makeText(baseContext, "No user ID after login.", Toast.LENGTH_LONG).show()
                             return@addOnCompleteListener
                         }
-                        // Ensure the user doc exists
                         val usersRef = Firebase.firestore.collection("users").document(uid)
                         usersRef.get()
                             .addOnSuccessListener { snap ->
@@ -118,6 +119,64 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
         }
+
+        forgotPasswordButton?.setOnClickListener {
+            val existingEmail = emailEditText.text.toString().trim()
+            if (existingEmail.isNotEmpty()) {
+                sendPasswordReset(existingEmail)
+            } else {
+                promptForEmailAndReset()
+            }
+        }
+    }
+
+    private fun promptForEmailAndReset() {
+        val input = EditText(this).apply {
+            hint = "Email address"
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Reset Password")
+            .setMessage("Enter your account email to receive a reset link.")
+            .setView(input)
+            .setPositiveButton("Send") { _, _ ->
+                val email = input.text.toString().trim()
+                if (email.isEmpty()) {
+                    Toast.makeText(this, "Email cannot be empty.", Toast.LENGTH_SHORT).show()
+                } else {
+                    sendPasswordReset(email)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun sendPasswordReset(email: String) {
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            Toast.makeText(this, "Invalid email format.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        auth.sendPasswordResetEmail(email)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    Toast.makeText(
+                        this,
+                        "If an account exists for that email, a reset link has been sent.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    val ex = task.exception
+                    val msg = ex?.message ?: "Could not send reset email."
+                    // Still show generic message to avoid account enumeration
+                    Toast.makeText(
+                        this,
+                        "If an account exists for that email, a reset link has been sent.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    Log.w("ForgotPassword", "sendPasswordResetEmail error: $msg", ex)
+                }
+            }
     }
 
     private fun navigateToPlayerManagement() {
