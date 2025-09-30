@@ -9,6 +9,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
@@ -29,33 +30,37 @@ import java.util.LinkedHashSet
 
 class PlayerManagementActivity : AppCompatActivity() {
 
+    // Firebase
     private lateinit var db: FirebaseFirestore
     private lateinit var auth: FirebaseAuth
     private lateinit var playersCollection: CollectionReference
     private lateinit var uid: String
 
+    // Setup UI
     private lateinit var titleTextView: TextView
     private var syncBanner: TextView? = null
-
     private lateinit var setupContainer: LinearLayout
     private lateinit var playersRecyclerView: RecyclerView
     private lateinit var playerChipGroup: ChipGroup
     private lateinit var startSessionButton: Button
 
+    // Player add
     private lateinit var playerNameInputLayout: TextInputLayout
     private lateinit var playerNameAutoComplete: AutoCompleteTextView
     private lateinit var playerNameAdapter: ArrayAdapter<String>
     private lateinit var addPlayerManualButton: MaterialButton
 
-    // CHANGED to ImageButton to match layout
+    // Court stepper (triangles)
     private lateinit var courtMinusButton: ImageButton
     private lateinit var courtPlusButton: ImageButton
     private lateinit var courtCountText: TextView
     private var desiredCourtCount = 1
 
+    // Game phase
     private lateinit var courtsRecyclerView: RecyclerView
     private lateinit var restingPlayersTextView: TextView
 
+    // Action menu
     private lateinit var statsButton: MaterialButton
     private lateinit var addLatePlayerButton: MaterialButton
     private lateinit var addCourtButton: MaterialButton
@@ -63,14 +68,15 @@ class PlayerManagementActivity : AppCompatActivity() {
     private lateinit var sitOutButton: MaterialButton
     private lateinit var restoreButton: MaterialButton
     private lateinit var signOutButton: MaterialButton
-
     private lateinit var fabMenu: FloatingActionButton
     private lateinit var actionMenuContainer: ViewGroup
     private var isMenuOpen = false
 
+    // Adapters
     private lateinit var playerSelectionAdapter: PlayerSelectionAdapter
     private lateinit var courtAdapter: CourtAdapter
 
+    // Data
     private val allPlayers = mutableListOf<Player>()
     private val initialSelectedPlayers = mutableSetOf<Player>()
     private val currentCourts = mutableListOf<Court>()
@@ -84,6 +90,7 @@ class PlayerManagementActivity : AppCompatActivity() {
     private var matchesListener: ListenerRegistration? = null
     private val courtMatchSeq = mutableMapOf<Int, Int>()
 
+    // Pairing memory / fairness
     private val partnershipHistory = mutableMapOf<String, Int>()
     private val recentOpponents = mutableMapOf<String, Set<String>>()
     private val partnerCount = mutableMapOf<String, MutableMap<String, Int>>()
@@ -94,17 +101,23 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private val ALPHA_PARTNER = 1.0
     private val BETA_OPPONENT = 0.5
+
+    // Special pair bias
     private val SPECIAL_DESIRED_RATIO = 0.60
     private val SPECIAL_WEIGHT = 2.0
     private var specialTogetherCount = 0
     private var specialTeammateCount = 0
+
+    // Sitting out
     private val sittingOutIds = mutableSetOf<String>()
 
+    // High win constraint
     private val HIGH_WINRATE_THRESHOLD = 0.65
     private val MIN_GAMES_FOR_HIGH = 10
     private fun isHighWinPlayer(p: Player) =
         p.gamesPlayed >= MIN_GAMES_FOR_HIGH && p.winrate >= HIGH_WINRATE_THRESHOLD
 
+    // Lifecycle
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_player_management)
@@ -114,7 +127,8 @@ class PlayerManagementActivity : AppCompatActivity() {
         val currentUser = auth.currentUser?.uid
         if (currentUser == null) {
             Toast.makeText(this, "No authenticated user. Please login.", Toast.LENGTH_LONG).show()
-            finish(); return
+            finish()
+            return
         }
         uid = currentUser
         playersCollection = db.collection("users").document(uid).collection("players")
@@ -129,30 +143,20 @@ class PlayerManagementActivity : AppCompatActivity() {
     private fun initializeUI() {
         titleTextView = findViewById(R.id.textViewTitle)
         syncBanner = findViewById(R.id.syncBanner)
-
         setupContainer = findViewById(R.id.setupContainer)
         playersRecyclerView = findViewById(R.id.recyclerViewPlayers)
         playerChipGroup = findViewById(R.id.playerChipGroup)
-
         playerNameInputLayout = findViewById(R.id.tilPlayerName)
         playerNameAutoComplete = findViewById(R.id.autoCompletePlayerName)
         addPlayerManualButton = findViewById(R.id.buttonAddPlayerManual)
-
-        // ImageButtons
         courtMinusButton = findViewById(R.id.buttonCourtMinus)
         courtPlusButton = findViewById(R.id.buttonCourtPlus)
         courtCountText = findViewById(R.id.textCourtCount)
-        desiredCourtCount = 1
-        updateCourtCountDisplay()
-
         startSessionButton = findViewById(R.id.buttonStartSession)
-
         courtsRecyclerView = findViewById(R.id.recyclerViewCourts)
         restingPlayersTextView = findViewById(R.id.textViewRestingPlayers)
-
         fabMenu = findViewById(R.id.fabMenu)
         actionMenuContainer = findViewById(R.id.actionMenuContainer)
-
         statsButton = findViewById(R.id.buttonStats)
         addLatePlayerButton = findViewById(R.id.buttonAddLatePlayer)
         addCourtButton = findViewById(R.id.buttonAddCourt)
@@ -164,11 +168,18 @@ class PlayerManagementActivity : AppCompatActivity() {
         playersRecyclerView.layoutManager = LinearLayoutManager(this)
         courtsRecyclerView.layoutManager = LinearLayoutManager(this)
 
+        desiredCourtCount = 1
+        updateCourtCountDisplay()
+
         courtMinusButton.setOnClickListener {
-            if (desiredCourtCount > 1) { desiredCourtCount--; updateCourtCountDisplay() }
+            if (desiredCourtCount > 1) {
+                desiredCourtCount--
+                updateCourtCountDisplay()
+            }
         }
         courtPlusButton.setOnClickListener {
-            desiredCourtCount++; updateCourtCountDisplay()
+            desiredCourtCount++
+            updateCourtCountDisplay()
         }
 
         playerNameAdapter = ArrayAdapter(
@@ -211,15 +222,12 @@ class PlayerManagementActivity : AppCompatActivity() {
         courtsRecyclerView.adapter = courtAdapter
     }
 
-    private fun updateCourtCountDisplay() {
-        courtCountText.text = desiredCourtCount.toString()
-    }
-
+    // Action menu
     private fun toggleActionMenu(forceShow: Boolean? = null) {
-        val target = forceShow ?: !isMenuOpen
-        if (target == isMenuOpen) return
-        isMenuOpen = target
-        animateMenuVisibility(isMenuOpen)
+        val show = forceShow ?: !isMenuOpen
+        if (show == isMenuOpen) return
+        isMenuOpen = show
+        animateMenuVisibility(show)
     }
 
     private fun animateMenuVisibility(show: Boolean) {
@@ -229,8 +237,12 @@ class PlayerManagementActivity : AppCompatActivity() {
             actionMenuContainer.translationY = 32f
             actionMenuContainer.animate().alpha(1f).translationY(0f).setDuration(160).start()
         } else {
-            actionMenuContainer.animate().alpha(0f).translationY(16f).setDuration(120)
-                .withEndAction { actionMenuContainer.visibility = View.GONE }.start()
+            actionMenuContainer.animate()
+                .alpha(0f)
+                .translationY(16f)
+                .setDuration(120)
+                .withEndAction { actionMenuContainer.visibility = View.GONE }
+                .start()
         }
     }
 
@@ -260,21 +272,26 @@ class PlayerManagementActivity : AppCompatActivity() {
         signOutButton.setOnClickListener { toggleActionMenu(false); confirmSignOut() }
     }
 
+    // Firestore listener with uniqueness & suggestions update
     private fun listenForPlayerUpdates() {
         playersCollection.orderBy("name").addSnapshotListener { snap, e ->
-            if (e != null) { Log.w("Firestore", "Listen failed", e); return@addSnapshotListener }
+            if (e != null) {
+                Log.w("Firestore", "Listen failed", e)
+                return@addSnapshotListener
+            }
 
             val prevSelected = initialSelectedPlayers.map { it.id }.toSet()
 
-            val tempMap = LinkedHashMap<String, Player>()
+            val unique = LinkedHashMap<String, Player>()
             snap?.forEach { doc ->
                 val raw = doc.toObject(Player::class.java)
                 val p = raw.copy(id = doc.id, name = raw.name.trim())
-                val key = p.name.lowercase()
-                if (!tempMap.containsKey(key)) tempMap[key] = p
+                val k = p.name.lowercase()
+                if (!unique.containsKey(k)) unique[k] = p
             }
+
             allPlayers.clear()
-            allPlayers.addAll(tempMap.values)
+            allPlayers.addAll(unique.values)
 
             initialSelectedPlayers.clear()
             allPlayers.forEach { if (prevSelected.contains(it.id)) initialSelectedPlayers.add(it) }
@@ -293,6 +310,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
     }
 
+    // Setup / Game view switching
     private fun switchToSetupView() {
         titleTextView.text = "Session Setup"
         setupContainer.visibility = View.VISIBLE
@@ -343,6 +361,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         updateRestingPlayersView()
     }
 
+    // Chips
     private fun rebuildPlayerChips() {
         if (setupContainer.visibility != View.VISIBLE) return
         playerChipGroup.removeAllViews()
@@ -353,6 +372,8 @@ class PlayerManagementActivity : AppCompatActivity() {
                 isCheckable = true
                 isChecked = selected.contains(player.id)
                 tag = player
+                setChipBackgroundColorResource(R.color.bs_secondary_container)
+                setTextColor(ContextCompat.getColor(context, R.color.bs_on_secondary_container))
                 setOnClickListener {
                     val checked = (it as Chip).isChecked
                     if (checked) initialSelectedPlayers.add(player) else initialSelectedPlayers.remove(player)
@@ -362,16 +383,21 @@ class PlayerManagementActivity : AppCompatActivity() {
         }
     }
 
+    // Session start
     private fun startSession() {
         val selectedIds = initialSelectedPlayers.map { it.id }.toSet()
         val playersForSession = allPlayers.filter { it.id in selectedIds }
         val courtCount = desiredCourtCount
-        if (courtCount <= 0) { Toast.makeText(this, "Invalid courts.", Toast.LENGTH_SHORT).show(); return }
+        if (courtCount <= 0) {
+            Toast.makeText(this, "Invalid number of courts.", Toast.LENGTH_SHORT).show()
+            return
+        }
         val needed = courtCount * 4
         if (playersForSession.size < needed) {
             Toast.makeText(this, "Need $needed players; selected ${playersForSession.size}.", Toast.LENGTH_LONG).show()
             return
         }
+
         sessionId = System.currentTimeMillis().toString()
         courtMatchSeq.clear()
         attachMatchesListener()
@@ -403,14 +429,18 @@ class PlayerManagementActivity : AppCompatActivity() {
         switchToGameView()
     }
 
+    // Match recording
     private fun recordMatchAndUpdatePlayerStats(
-        winners: List<Player>, losers: List<Player>, courtIndex: Int
+        winners: List<Player>,
+        losers: List<Player>,
+        courtIndex: Int
     ) {
         val currentSession = sessionId ?: return
         val courtNumber = currentCourts.getOrNull(courtIndex)?.courtNumber ?: (courtIndex + 1)
         val nextSeq = (courtMatchSeq[courtIndex] ?: 0) + 1
         courtMatchSeq[courtIndex] = nextSeq
         val matchId = "court${courtNumber}_seq$nextSeq"
+
         val matchesRef = db.collection("users").document(uid)
             .collection("sessions").document(currentSession)
             .collection("matches")
@@ -421,6 +451,7 @@ class PlayerManagementActivity : AppCompatActivity() {
             val gamePlayers = winners + losers
             val snaps = gamePlayers.associateWith { tx.get(playersCollection.document(it.id)) }
             snaps.forEach { (p, s) -> if (!s.exists()) throw Exception("Missing player ${p.name}") }
+
             tx.set(
                 matchRef,
                 mapOf(
@@ -433,6 +464,7 @@ class PlayerManagementActivity : AppCompatActivity() {
                 ),
                 SetOptions.merge()
             )
+
             snaps.forEach { (p, s) ->
                 val wins = s.getLong("wins") ?: 0L
                 val losses = s.getLong("losses") ?: 0L
@@ -455,16 +487,11 @@ class PlayerManagementActivity : AppCompatActivity() {
             null
         }.addOnSuccessListener {
             applyLocalMatchResult(
-                winners.map { it.id }.toSet(),
-                losers.map { it.id }.toSet()
+                winnerIds = winners.map { it.id }.toSet(),
+                loserIds = losers.map { it.id }.toSet()
             )
             courtAdapter.notifyDataSetChanged()
             updateRestingPlayersView()
-            Toast.makeText(
-                this,
-                "Recorded Court $courtNumber winners: ${winners.joinToString { it.name }}",
-                Toast.LENGTH_SHORT
-            ).show()
         }.addOnFailureListener { e ->
             Toast.makeText(this, "Record failed: ${e.message}", Toast.LENGTH_LONG).show()
             courtAdapter.notifyItemChanged(courtIndex)
@@ -493,6 +520,7 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun handleGameFinished(winners: List<Player>, losers: List<Player>, courtIndex: Int) {
         recordMatchAndUpdatePlayerStats(winners, losers, courtIndex)
+
         (winners + losers).forEach {
             sessionPlayerIds.add(it.id)
             sessionStats.getOrPut(it.id) { SessionStats() }.games++
@@ -509,9 +537,9 @@ class PlayerManagementActivity : AppCompatActivity() {
         updateSpecialPairStats(winners, losers)
 
         currentCourts[courtIndex].teams = null
-        val cn = currentCourts.getOrNull(courtIndex)?.courtNumber ?: (courtIndex + 1)
+        val courtNumber = currentCourts.getOrNull(courtIndex)?.courtNumber ?: (courtIndex + 1)
         val lastFour = winners + losers
-        lastCourtGroupIds[cn] = lastFour.map { it.id }.toSet()
+        lastCourtGroupIds[courtNumber] = lastFour.map { it.id }.toSet()
         val ids = lastFour.map { it.id }
         lastFour.forEach { p -> lastQuartetByPlayer[p.id] = ids.filter { it != p.id }.toSet() }
 
@@ -542,6 +570,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         addCourtButton.isEnabled = restingPlayers.size >= 4
     }
 
+    // Player add / uniqueness
     private fun addPlayerToFirestore(name: String) {
         val norm = name.trim()
         val normKey = norm.lowercase()
@@ -586,6 +615,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         playerNameAutoComplete.text.clear()
     }
 
+    // Sit out / restore
     private data class CourtLocation(val courtIndex: Int, val teamIndex: Int, val posInTeam: Int)
 
     private fun showSitOutFlow() {
@@ -596,15 +626,19 @@ class PlayerManagementActivity : AppCompatActivity() {
                 b.forEach { playingCourtMap[it.id] = court.courtNumber }
             }
         }
-        val playingPlayers = playingCourtMap.keys.filter { it !in sittingOutIds }
+
+        val all = (playingCourtMap.keys + restingPlayers.map { it.id }).distinct()
             .mapNotNull { id -> allPlayers.firstOrNull { it.id == id } }
-        val restingCandidates = restingPlayers.filter { it.id !in sittingOutIds }
-        val combined = (playingPlayers + restingCandidates).distinctBy { it.id }
-        if (combined.isEmpty()) {
-            Toast.makeText(this, "No eligible players.", Toast.LENGTH_SHORT).show(); return
+            .filter { it.id !in sittingOutIds }
+
+        if (all.isEmpty()) {
+            Toast.makeText(this, "No eligible players.", Toast.LENGTH_SHORT).show()
+            return
         }
-        val ordered = combined.sortedWith { p1, p2 ->
-            val c1 = playingCourtMap[p1.id]; val c2 = playingCourtMap[p2.id]
+
+        val ordered = all.sortedWith { p1, p2 ->
+            val c1 = playingCourtMap[p1.id]
+            val c2 = playingCourtMap[p2.id]
             when {
                 c1 != null && c2 != null -> c1.compareTo(c2).takeIf { it != 0 }
                     ?: p1.name.lowercase().compareTo(p2.name.lowercase())
@@ -613,27 +647,30 @@ class PlayerManagementActivity : AppCompatActivity() {
                 else -> p1.name.lowercase().compareTo(p2.name.lowercase())
             }
         }
-        val labels = ordered.map { p ->
-            val label = playingCourtMap[p.id]?.let { " (Court $it)" } ?: " (Resting)"
-            p.name + label
-        }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Select Player to Sit Out")
-            .setItems(labels) { dialog, which ->
-                val sel = ordered[which]; dialog.dismiss()
-                val loc = locatePlayerOnCourt(sel.id)
-                if (loc == null) {
-                    if (restingPlayers.removeIf { it.id == sel.id }) {
-                        sittingOutIds.add(sel.id)
-                        Toast.makeText(this, "${sel.name} is sitting out.", Toast.LENGTH_SHORT).show()
-                        updateRestingPlayersView()
-                    }
-                } else {
-                    promptReplacementForActivePlayer(sel, loc)
+
+        val entries = ordered.map { p ->
+            SitOutEntry(p, playingCourtMap.containsKey(p.id), playingCourtMap[p.id] ?: -1)
+        }
+
+        val sheetView = layoutInflater.inflate(R.layout.bottom_sheet_sit_out_select, null)
+        val rv = sheetView.findViewById<RecyclerView>(R.id.recyclerViewSitOutPlayers)
+        rv.layoutManager = LinearLayoutManager(this)
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        rv.adapter = SitOutAdapter(entries) { selected ->
+            val loc = locatePlayerOnCourt(selected.id)
+            if (loc == null) {
+                if (restingPlayers.removeIf { it.id == selected.id }) {
+                    sittingOutIds.add(selected.id)
+                    Toast.makeText(this, "${selected.name} is sitting out.", Toast.LENGTH_SHORT).show()
+                    updateRestingPlayersView()
                 }
+            } else {
+                promptReplacementForActivePlayer(selected, loc)
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            dialog.dismiss()
+        }
+        dialog.setContentView(sheetView)
+        dialog.show()
     }
 
     private fun locatePlayerOnCourt(playerId: String): CourtLocation? {
@@ -649,18 +686,32 @@ class PlayerManagementActivity : AppCompatActivity() {
     }
 
     private fun promptReplacementForActivePlayer(leaving: Player, loc: CourtLocation) {
-        if (restingPlayers.isEmpty()) {
+        // Filter only resting players (not sittingOut or already playing)
+        val replacements = restingPlayers.toList().sortedBy { it.name.lowercase() }
+        if (replacements.isEmpty()) {
             Toast.makeText(this, "No resting players to replace ${leaving.name}.", Toast.LENGTH_LONG).show()
             return
         }
-        val replacements = restingPlayers.toList().sortedBy { it.name.lowercase() }
-        AlertDialog.Builder(this)
-            .setTitle("Replace ${leaving.name} with:")
-            .setItems(replacements.map { it.name }.toTypedArray()) { d, idx ->
-                val replacement = replacements[idx]; d.dismiss(); applyReplacement(leaving, replacement, loc)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+
+        val sheetView = layoutInflater.inflate(R.layout.bottom_sheet_replace_player, null)
+        val title = sheetView.findViewById<TextView>(R.id.textReplaceTitle)
+        val subtitle = sheetView.findViewById<TextView>(R.id.textReplaceSubtitle)
+        val rv = sheetView.findViewById<RecyclerView>(R.id.recyclerViewReplacementPlayers)
+        val cancelBtn = sheetView.findViewById<TextView>(R.id.buttonCancelReplace)
+
+        title.text = "Replace ${leaving.name}"
+        subtitle.text = "Choose a resting player to sub in"
+
+        rv.layoutManager = LinearLayoutManager(this)
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        rv.adapter = ReplacementAdapter(replacements) { replacement ->
+            dialog.dismiss()
+            applyReplacement(leaving, replacement, loc)
+        }
+        cancelBtn.setOnClickListener { dialog.dismiss() }
+
+        dialog.setContentView(sheetView)
+        dialog.show()
     }
 
     private fun applyReplacement(leaving: Player, replacement: Player, loc: CourtLocation) {
@@ -685,12 +736,15 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun showRestoreDialog() {
         if (sittingOutIds.isEmpty()) {
-            Toast.makeText(this, "No players sitting out.", Toast.LENGTH_SHORT).show(); return
+            Toast.makeText(this, "No players sitting out.", Toast.LENGTH_SHORT).show()
+            return
         }
         val candidates = sittingOutIds.mapNotNull { playerById(it) }.sortedBy { it.name.lowercase() }
+
         val view = layoutInflater.inflate(R.layout.dialog_restore_players, null)
         val chipGroup = view.findViewById<ChipGroup>(R.id.chipGroupRestorePlayers)
         val hint = view.findViewById<TextView>(R.id.textViewRestoreHint)
+
         if (candidates.isEmpty()) {
             hint.text = "No players to restore."
         } else {
@@ -699,9 +753,12 @@ class PlayerManagementActivity : AppCompatActivity() {
                     text = p.name
                     isCheckable = true
                     tag = p
+                    setChipBackgroundColorResource(R.color.bs_secondary_container)
+                    setTextColor(ContextCompat.getColor(context, R.color.bs_on_secondary_container))
                 })
             }
         }
+
         AlertDialog.Builder(this)
             .setTitle("Restore Players")
             .setView(view)
@@ -724,6 +781,7 @@ class PlayerManagementActivity : AppCompatActivity() {
             .show()
     }
 
+    // Add Late Player dialog
     private fun showAddLatePlayerDialog() {
         val available = allPlayers.filter { it.id !in sessionPlayerIds && it.id !in sittingOutIds }
         val view = layoutInflater.inflate(R.layout.dialog_add_late_player, null)
@@ -742,6 +800,8 @@ class PlayerManagementActivity : AppCompatActivity() {
                     text = player.name
                     isCheckable = true
                     tag = player
+                    setChipBackgroundColorResource(R.color.bs_secondary_container)
+                    setTextColor(ContextCompat.getColor(context, R.color.bs_on_secondary_container))
                 })
             }
         }
@@ -780,13 +840,15 @@ class PlayerManagementActivity : AppCompatActivity() {
                 Toast.makeText(this, "Player name cannot be empty.", Toast.LENGTH_SHORT).show()
             }
         }
+
         dialog.show()
     }
 
     private fun addLatePlayer(name: String, onSuccess: () -> Unit) {
         val normalized = name.trim().lowercase()
         if (allPlayers.any { it.name.trim().lowercase() == normalized }) {
-            Toast.makeText(this, "$name already exists.", Toast.LENGTH_SHORT).show(); return
+            Toast.makeText(this, "$name already exists.", Toast.LENGTH_SHORT).show()
+            return
         }
         val p = Player(name = name.trim(), wins = 0, losses = 0, gamesPlayed = 0, winrate = 0.0)
         playersCollection.document(normalized).set(p)
@@ -810,9 +872,11 @@ class PlayerManagementActivity : AppCompatActivity() {
             }
     }
 
+    // Court + Edit
     private fun addCourt() {
         if (restingPlayers.size < 4) {
-            Toast.makeText(this, "Need 4 resting players.", Toast.LENGTH_SHORT).show(); return
+            Toast.makeText(this, "Need 4 resting players.", Toast.LENGTH_SHORT).show()
+            return
         }
         val picks = drawFairFromRestingQueueAvoid(4, null)
         val teams = generateTeamsForCourt(picks)
@@ -921,29 +985,31 @@ class PlayerManagementActivity : AppCompatActivity() {
                 .setNegativeButton("Cancel", null)
                 .show()
         }
+
         dialog.show()
     }
 
-    private fun rating(p: Player): Double = if (p.gamesPlayed < 10) 0.5 else p.winrate
+    // Pairing logic
+    private fun rating(p: Player) = if (p.gamesPlayed < 10) 0.5 else p.winrate
     private fun getPartnerCount(a: String, b: String): Int {
         if (a == b) return 0
-        val (x,y) = if (a < b) a to b else b to a
+        val (x, y) = if (a < b) a to b else b to a
         return partnerCount[x]?.get(y) ?: 0
     }
     private fun getOpponentCount(a: String, b: String): Int {
         if (a == b) return 0
-        val (x,y) = if (a < b) a to b else b to a
+        val (x, y) = if (a < b) a to b else b to a
         return opponentCount[x]?.get(y) ?: 0
     }
     private fun incPartnerCountPair(a: String, b: String) {
         if (a == b) return
-        val (x,y) = if (a < b) a to b else b to a
+        val (x, y) = if (a < b) a to b else b to a
         val map = partnerCount.getOrPut(x) { mutableMapOf() }
         map[y] = (map[y] ?: 0) + 1
     }
     private fun incOpponentCountPair(a: String, b: String) {
         if (a == b) return
-        val (x,y) = if (a < b) a to b else b to a
+        val (x, y) = if (a < b) a to b else b to a
         val map = opponentCount.getOrPut(x) { mutableMapOf() }
         map[y] = (map[y] ?: 0) + 1
     }
@@ -992,25 +1058,25 @@ class PlayerManagementActivity : AppCompatActivity() {
 
     private fun chooseBestPairingOfFour(players: List<Player>): Pair<List<Player>, List<Player>> {
         require(players.size == 4)
-        val (A,B,C,D) = players
+        val (A, B, C, D) = players
         val options = listOf(
-            Pair(listOf(A,B), listOf(C,D)),
-            Pair(listOf(A,C), listOf(B,D)),
-            Pair(listOf(A,D), listOf(B,C))
+            Pair(listOf(A, B), listOf(C, D)),
+            Pair(listOf(A, C), listOf(B, D)),
+            Pair(listOf(A, D), listOf(B, C))
         )
         val highs = players.filter { isHighWinPlayer(it) }
         val highCount = highs.size
         val constrained = when (highCount) {
             2 -> {
                 val highIds = highs.map { it.id }.toSet()
-                options.filter { (t1,t2) ->
+                options.filter { (t1, t2) ->
                     t1.count { it.id in highIds } == 1 && t2.count { it.id in highIds } == 1
                 }
             }
             3 -> {
                 val highest = highs.maxByOrNull { it.winrate }!!
                 val low = players.first { it.id !in highs.map { h -> h.id }.toSet() }
-                options.filter { (t1,t2) ->
+                options.filter { (t1, t2) ->
                     (t1.contains(highest) && t1.contains(low)) ||
                             (t2.contains(highest) && t2.contains(low))
                 }
@@ -1022,7 +1088,10 @@ class PlayerManagementActivity : AppCompatActivity() {
         var bestCost = pairingCost(best.first, best.second) + specialBiasCost(best.first, best.second, players)
         for (opt in constrained.drop(1)) {
             val cost = pairingCost(opt.first, opt.second) + specialBiasCost(opt.first, opt.second, players)
-            if (cost < bestCost) { best = opt; bestCost = cost }
+            if (cost < bestCost) {
+                best = opt
+                bestCost = cost
+            }
         }
         return Pair(best.first.shuffled(), best.second.shuffled())
     }
@@ -1061,11 +1130,16 @@ class PlayerManagementActivity : AppCompatActivity() {
                             for (t in picks) {
                                 val pid = t.second.id
                                 val last = lastQuartetByPlayer[pid]
-                                if (last != null && (idsSet - pid) == last) { ok = false; break }
+                                if (last != null && (idsSet - pid) == last) {
+                                    ok = false; break
+                                }
                             }
                             if (!ok) continue
                             val score = picks.sumOf { it.third }
-                            if (score > bestScore) { best = picks; bestScore = score }
+                            if (score > bestScore) {
+                                best = picks
+                                bestScore = score
+                            }
                         }
         }
         val chosen = best ?: run {
@@ -1082,99 +1156,52 @@ class PlayerManagementActivity : AppCompatActivity() {
         return picked
     }
 
-    private data class StatsRow(
-        val name: String,
-        val currentG: Int, val currentW: Int, val currentL: Int,
-        val overallG: Int, val overallW: Int, val overallL: Int,
-        val overallWinPct: Int
-    )
-
     private fun buildStatsRows(): List<StatsRow> {
-        val byId = allPlayers.associateBy { it.id }
-        return sessionPlayerIds.mapNotNull { id ->
-            val p = byId[id] ?: return@mapNotNull null
-            val cur = sessionStats[id] ?: SessionStats()
+        // We iterate over sessionStats keys so we only consider players who are (or were) in this session.
+        return sessionStats.mapNotNull { (id, cur) ->
+            val p = allPlayers.firstOrNull { it.id == id } ?: return@mapNotNull null
             val g = p.gamesPlayed
             val w = p.wins
             val pct = if (g > 0) ((w.toDouble() / g) * 100).toInt() else 0
-            StatsRow(p.name, cur.games, cur.wins, cur.losses, g, w, p.losses, pct)
-        }.sortedBy { it.name.lowercase() }
+            StatsRow(
+                name = p.name,
+                currentG = cur.games,
+                currentW = cur.wins,
+                currentL = cur.losses,
+                overallG = g,
+                overallW = w,
+                overallL = p.losses,
+                overallWinPct = pct
+            )
+        }
+            // Sort: most current games first, then most current wins, then name
+            .sortedWith(
+                compareByDescending<StatsRow> { it.currentG }
+                    .thenByDescending { it.currentW }
+                    .thenBy { it.name.lowercase() }
+            )
     }
 
     private fun showStatsDialog() {
         val rows = buildStatsRows()
-        val dateStr = getTodayDisplayDate()
-        val hScroll = HorizontalScrollView(this)
-        val vScroll = ScrollView(this).apply { isFillViewport = true }
-        val table = buildStatsTable(rows)
-        vScroll.addView(table)
-        hScroll.addView(vScroll)
+
+        val view = layoutInflater.inflate(R.layout.dialog_session_stats, null)
+        val title = view.findViewById<TextView>(R.id.textStatsTitle)
+        title.text = "Session Stats (${getTodayDisplayDate()})"
+
+        val rv = view.findViewById<RecyclerView>(R.id.recyclerViewStats)
+        rv.layoutManager = LinearLayoutManager(this)
+        rv.adapter = StatsAdapter(rows)
+
+        // Measure anticipated height: if too tall, allow scrolling naturally (dialog’s default).
+        // Since RecyclerView is wrap_content, small lists show immediately without scroll.
         AlertDialog.Builder(this)
-            .setTitle("Session Stats ($dateStr)")
-            .setView(hScroll)
+            .setView(view)
             .setPositiveButton("Close", null)
             .show()
     }
 
-    private fun buildStatsTable(rows: List<StatsRow>): TableLayout {
-        val density = resources.displayMetrics.density
-        fun dp(x: Int) = (x * density).toInt()
-        val NAME_W = 112
-        fun headerCell(t: String, span: Int = 1) = TextView(this).apply {
-            text = t; textSize = 13f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            gravity = android.view.Gravity.CENTER
-            layoutParams = TableRow.LayoutParams(
-                TableRow.LayoutParams.WRAP_CONTENT,
-                TableRow.LayoutParams.WRAP_CONTENT
-            ).apply { this.span = span }
-        }
-        fun headerNameCell(t: String) = TextView(this).apply {
-            text = t; textSize = 13f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            minWidth = dp(NAME_W); maxWidth = dp(NAME_W)
-            gravity = android.view.Gravity.START
-        }
-        fun bodyCell(t: String, name: Boolean = false) = TextView(this).apply {
-            text = t; textSize = 13f
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-            gravity = if (name) android.view.Gravity.START else android.view.Gravity.CENTER
-            if (name) { minWidth = dp(NAME_W); maxWidth = dp(NAME_W) }
-        }
-        fun vSep() = View(this).apply {
-            layoutParams = TableRow.LayoutParams(dp(1), TableRow.LayoutParams.MATCH_PARENT)
-                .apply { setMargins(0, dp(2), 0, dp(2)) }
-            setBackgroundColor(0xFFDDDDDD.toInt())
-        }
-        val table = TableLayout(this).apply { setPadding(dp(4), dp(4), dp(4), dp(4)) }
-        val r1 = TableRow(this)
-        r1.addView(headerNameCell("Name")); r1.addView(vSep())
-        r1.addView(headerCell("Current", 3)); r1.addView(vSep())
-        r1.addView(headerCell("Overall", 4)); table.addView(r1)
-        val r2 = TableRow(this)
-        r2.addView(bodyCell("", true)); r2.addView(vSep())
-        listOf("G","W","L").forEach { r2.addView(headerCell(it)) }
-        r2.addView(vSep())
-        listOf("G","W","L","Win%").forEach { r2.addView(headerCell(it)) }
-        table.addView(r2)
-        rows.forEach { row ->
-            val tr = TableRow(this)
-            tr.addView(bodyCell(row.name, true)); tr.addView(vSep())
-            tr.addView(bodyCell(row.currentG.toString()))
-            tr.addView(bodyCell(row.currentW.toString()))
-            tr.addView(bodyCell(row.currentL.toString()))
-            tr.addView(vSep())
-            tr.addView(bodyCell(row.overallG.toString()))
-            tr.addView(bodyCell(row.overallW.toString()))
-            tr.addView(bodyCell(row.overallL.toString()))
-            tr.addView(bodyCell("${row.overallWinPct}%"))
-            table.addView(tr)
-        }
-        return table
-    }
-
+    // Firestore matches listener
     private fun attachMatchesListener() {
         val currentSession = sessionId ?: return
         detachMatchesListener()
@@ -1203,6 +1230,7 @@ class PlayerManagementActivity : AppCompatActivity() {
         matchesListener = null
     }
 
+    // Sign out
     private fun confirmSignOut() {
         AlertDialog.Builder(this)
             .setTitle("Sign Out")
@@ -1233,21 +1261,58 @@ class PlayerManagementActivity : AppCompatActivity() {
         sittingOutIds.clear()
         auth.signOut()
         val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            addFlags(
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TASK
+            )
         }
-        startActivity(intent); finish()
+        startActivity(intent)
+        finish()
     }
 
-    private fun playerById(id: String) = allPlayers.firstOrNull { it.id == id }
+    private fun updateCourtCountDisplay() {
+        courtCountText.text = desiredCourtCount.toString()
+    }
+
+    private fun playerById(id: String): Player? = allPlayers.firstOrNull { it.id == id }
 
     override fun onDestroy() {
         super.onDestroy()
         detachMatchesListener()
     }
+
+    // ----- Inner Adapters for Material Stats & Sit Out -----
+
+    data class SitOutEntry(val player: Player, val playing: Boolean, val court: Int)
+
+    inner class SitOutAdapter(
+        private val entries: List<SitOutEntry>,
+        private val onClick: (Player) -> Unit
+    ) : RecyclerView.Adapter<SitOutAdapter.SitOutVH>() {
+
+        inner class SitOutVH(v: View) : RecyclerView.ViewHolder(v) {
+            val name: TextView = v.findViewById(R.id.textPlayerName)
+            val meta: TextView = v.findViewById(R.id.textPlayerMeta)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SitOutVH {
+            val v = layoutInflater.inflate(R.layout.item_player_line, parent, false)
+            return SitOutVH(v)
+        }
+
+        override fun onBindViewHolder(holder: SitOutVH, position: Int) {
+            val (p, playing, court) = entries[position]
+            holder.name.text = p.name
+            holder.meta.text = if (playing) "Court $court" else "Resting"
+            holder.itemView.setOnClickListener { onClick(p) }
+        }
+
+        override fun getItemCount(): Int = entries.size
+    }
 }
 
+// Date helper
 private fun getTodayDisplayDate(): String = try {
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
         java.time.LocalDate.now()

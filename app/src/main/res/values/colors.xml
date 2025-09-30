@@ -18,4 +18,17 @@
     <color name="skill_green">#4CAF50</color>   <!-- Green 500 -->
 
     <color name="purple_500">#6200EE</color>
+
+    <color name="bs_primary">#6200EE</color>
+    <color name="bs_primary_variant">#3700B3</color>
+    <color name="bs_on_primary">#FFFFFF</color>
+    <color name="bs_surface">#FFFFFF</color>
+    <color name="bs_surface_variant">#F2ECF9</color>
+    <color name="bs_outline">#D1C5E8</color>
+    <color name="bs_error">#B3261E</color>
+    <color name="bs_on_surface">#1D1B20</color>
+    <color name="bs_on_surface_variant">#49454F</color>
+    <color name="bs_secondary_container">#E8DEF8</color>
+    <color name="bs_on_secondary_container">#1D192B</color>
+    <color name="bs_success">#2E7D32</color>
 </resources>

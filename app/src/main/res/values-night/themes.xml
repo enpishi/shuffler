@@ -1,11 +1,20 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.Blacksheep" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
-        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
-    </style>
-
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark theme -->
     <style name="Theme.BlackSheep" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/bs_primary</item>
+        <item name="colorOnPrimary">@color/bs_on_primary</item>
+        <item name="colorPrimaryContainer">@color/bs_secondary_container</item>
+        <item name="colorOnPrimaryContainer">@color/bs_on_secondary_container</item>
+
+        <item name="shapeAppearanceSmallComponent">@style/Shape.Rounded16</item>
+        <item name="shapeAppearanceMediumComponent">@style/Shape.Rounded16</item>
+        <item name="shapeAppearanceLargeComponent">@style/Shape.Rounded24</item>
+
+        <item name="materialButtonStyle">@style/Widget.BlackSheep.Button.Filled</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.BlackSheep.Button.Outlined</item>
+
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
     </style>
 </resources>

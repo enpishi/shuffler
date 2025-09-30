@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Root of the stats dialog -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/statsRootContainer"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingTop="16dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="12dp">
+
+    <!-- Title with date (set in code) -->
+    <TextView
+        android:id="@+id/textStatsTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Session Stats (Date)"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        android:paddingBottom="10dp"/>
+
+    <!-- Column Header -->
+    <include
+        android:id="@+id/includeHeader"
+        layout="@layout/item_stat_header"/>
+
+    <!-- List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerViewStats"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:overScrollMode="never"
+        android:nestedScrollingEnabled="false"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"/>
+
+</LinearLayout>

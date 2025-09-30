@@ -1,13 +1,28 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.Blacksheep" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
-    </style>
-
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light theme -->
     <style name="Theme.BlackSheep" parent="Theme.Material3.Light.NoActionBar">
-        <item name="android:statusBarColor">@android:color/transparent</item>
-    </style>
+        <item name="colorPrimary">@color/bs_primary</item>
+        <item name="colorOnPrimary">@color/bs_on_primary</item>
+        <item name="colorPrimaryContainer">@color/bs_secondary_container</item>
+        <item name="colorOnPrimaryContainer">@color/bs_on_secondary_container</item>
 
-    <style name="Theme.Blacksheep" parent="Base.Theme.Blacksheep" />
+        <item name="colorSurface">@color/bs_surface</item>
+        <item name="colorSurfaceVariant">@color/bs_surface_variant</item>
+        <item name="colorOnSurface">@color/bs_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/bs_on_surface_variant</item>
+        <item name="colorOutline">@color/bs_outline</item>
+
+        <!-- Component shape overrides -->
+        <item name="shapeAppearanceSmallComponent">@style/Shape.Rounded16</item>
+        <item name="shapeAppearanceMediumComponent">@style/Shape.Rounded16</item>
+        <item name="shapeAppearanceLargeComponent">@style/Shape.Rounded24</item>
+
+        <!-- Button defaults -->
+        <item name="materialButtonStyle">@style/Widget.BlackSheep.Button.Filled</item>
+        <item name="materialButtonOutlinedStyle">@style/Widget.BlackSheep.Button.Outlined</item>
+
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/bs_surface</item>
+    </style>
 </resources>

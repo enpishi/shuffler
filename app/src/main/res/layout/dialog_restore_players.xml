@@ -4,32 +4,29 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:fillViewport="true"
-    android:paddingStart="20dp"
-    android:paddingEnd="20dp"
-    android:paddingTop="16dp"
-    android:paddingBottom="8dp">
+    android:overScrollMode="never">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:padding="18dp">
 
         <TextView
             android:id="@+id/textViewRestoreHint"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Select players to Restore"
+            android:text="Select players to restore"
             android:textStyle="bold"
-            android:paddingBottom="12dp" />
+            android:textSize="16sp"
+            android:paddingBottom="8dp"/>
 
         <com.google.android.material.chip.ChipGroup
             android:id="@+id/chipGroupRestorePlayers"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:isScrollContainer="false"
-            android:paddingBottom="8dp"
-            app:singleLine="false" />
-
+            app:singleLine="false"
+            app:singleSelection="false"
+            app:selectionRequired="false"/>
     </LinearLayout>
 </ScrollView>

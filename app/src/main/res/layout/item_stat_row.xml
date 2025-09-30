@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Single-line stat row: Name | Cur G/W/L | divider | All G/W/L Win% -->
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="40dp"
+    android:paddingStart="10dp"
+    android:paddingEnd="10dp"
+    android:background="?attr/colorSurface"
+    android:foreground="?attr/selectableItemBackground">
+
+    <TextView
+        android:id="@+id/textStatName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="player"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintWidth_percent="0.35"/>
+
+    <TextView
+        android:id="@+id/textCurrent"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="5/3/2"
+        android:textSize="12sp"
+        android:gravity="center"
+        android:maxLines="1"
+        app:layout_constraintStart_toEndOf="@id/textStatName"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintWidth_percent="0.25"/>
+
+    <View
+        android:id="@+id/rowDivider"
+        android:layout_width="1dp"
+        android:layout_height="18dp"
+        android:background="@color/bs_outline"
+        app:layout_constraintStart_toEndOf="@id/textCurrent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <TextView
+        android:id="@+id/textOverall"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="40/24/16 60%"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:gravity="end"
+        android:maxLines="1"
+        app:layout_constraintStart_toEndOf="@id/rowDivider"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <!-- Optional subtle bottom divider line -->
+    <View
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:background="@color/bs_outline"
+        android:alpha="0.25"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+</androidx.constraintlayout.widget.ConstraintLayout>
