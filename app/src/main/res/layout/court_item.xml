@@ -97,6 +97,28 @@
                     android:text="P4"/>
             </GridLayout>
 
+            <!-- Vertical divider -->
+            <View
+                android:id="@+id/dividerVertical"
+                android:layout_width="2dp"
+                android:layout_height="match_parent"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="#CC000000"
+                android:alpha="0.45"/>
+
+            <!-- Horizontal divider -->
+            <View
+                android:id="@+id/dividerHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="2dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="#CC000000"
+                android:alpha="0.45"/>
+
             <TextView
                 android:id="@+id/vsBadge"
                 android:layout_width="40dp"
