@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#ffffff">
+    android:background="@android:color/white">
 
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/playerView"
@@ -11,29 +11,10 @@
         android:layout_height="match_parent"
         android:keepScreenOn="true"
         android:fitsSystemWindows="true"
-        android:layout_gravity="center"
-        android:background="#000"
         android:contentDescription="Intro video"
+        android:background="@android:color/white"
         app:use_controller="false"
-        app:resize_mode="fit" />
-
-    <!-- Semi-transparent top bar with Skip -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:orientation="horizontal"
-        android:padding="12dp"
-        android:gravity="end|center_vertical"
-        android:background="#40000000">
-
-        <ImageButton
-            android:id="@+id/buttonSkip"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="Skip intro"
-            android:src="@android:drawable/ic_media_next"
-            android:tint="#FFFFFF" />
-    </LinearLayout>
+        app:resize_mode="fit"
+        app:shutter_background_color="@android:color/white" />
 
 </FrameLayout>

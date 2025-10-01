@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- System splash (Android 12+) that hands off immediately to your video theme -->
+    <style name="Theme.BlackSheep.SplashVideo.Launch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/blank_splash_icon</item>
+        <item name="windowSplashScreenAnimationDuration">120</item> <!-- ms -->
+        <item name="postSplashScreenTheme">@style/Theme.BlackSheep.SplashVideo</item>
+    </style>
+
+</resources>

@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
         android:allowBackup="true"
@@ -12,27 +11,23 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Blacksheep">
 
-        <!-- Splash video launcher -->
         <activity
             android:name=".SplashVideoActivity"
             android:exported="true"
-            android:theme="@style/Theme.BlackSheep.SplashVideo"
+            android:theme="@style/Theme.BlackSheep.SplashVideo.Launch"
             android:screenOrientation="portrait">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
 
-        <!-- Main activity (post-splash landing or login) -->
         <activity
             android:name=".MainActivity"
             android:exported="true" />
 
-        <!-- Player management screen -->
         <activity
             android:name=".PlayerManagementActivity"
             android:exported="false" />
     </application>
-
 </manifest>

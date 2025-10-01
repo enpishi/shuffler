@@ -4,12 +4,11 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
-import android.view.WindowManager
-import android.widget.ImageButton
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
+import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -22,66 +21,67 @@ class SplashVideoActivity : AppCompatActivity() {
     private var navigated = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Use a splash / fullscreen theme (see styles snippet)
+        // Uses Theme.BlackSheep.SplashVideo (white background, fullscreen)
         setTheme(R.style.Theme_BlackSheep_SplashVideo)
         super.onCreate(savedInstanceState)
-
         setContentView(R.layout.activity_splash_video)
 
-        // (Optional) Kick off async preload while video runs
+        // Optional: preload lightweight data in parallel
         lifecycleScope.launch {
-            val preloadJob = async(Dispatchers.IO) {
-                // preload lightweight data; DON'T block forever
-                // Example: warm up Firebase or load small cached prefs
-                // FirebaseApp.initializeApp(applicationContext) // if not already
-            }
-            preloadJob.await()
+            async(Dispatchers.IO) {
+                // Perform quick async prep here if desired
+            }.await()
         }
 
         initPlayer()
-
-        findViewById<ImageButton>(R.id.buttonSkip).setOnClickListener {
-            navigateNext()
-        }
     }
 
     private fun initPlayer() {
-        val view = findViewById<PlayerView>(R.id.playerView)
+        val playerView = findViewById<PlayerView>(R.id.playerView)
+        playerView.alpha = 0f
+
         player = ExoPlayer.Builder(this).build().also { exo ->
-            view.player = exo
-            // Raw resource URI
+            playerView.player = exo
             val uri = Uri.parse("android.resource://$packageName/${R.raw.intro}")
-            val mediaItem = MediaItem.fromUri(uri)
-            exo.setMediaItem(mediaItem)
+            exo.setMediaItem(MediaItem.fromUri(uri))
             exo.prepare()
             exo.playWhenReady = true
 
-            exo.addListener(object : com.google.android.exoplayer2.Player.Listener {
+            exo.addListener(object : Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    // Fade in for polish (avoid sudden flash)
+                    playerView.animate().alpha(1f).setDuration(250).start()
+                }
+
                 override fun onPlaybackStateChanged(state: Int) {
-                    if (state == com.google.android.exoplayer2.Player.STATE_ENDED) {
+                    if (state == Player.STATE_ENDED) {
                         navigateNext()
                     }
                 }
             })
         }
 
-        // Safety timeout if video fails
+        // Safety timeout fallback in case playback stalls or file is corrupted
         lifecycleScope.launch {
-            delay(8000) // fallback limit
+            delay(8000) // adjust if your video is longer
             if (!navigated) navigateNext()
         }
+
+        // (Optional) Allow user to tap the screen to skip - uncomment if desired:
+        // playerView.setOnClickListener { navigateNext() }
     }
 
     private fun navigateNext() {
         if (navigated) return
         navigated = true
-        player?.playWhenReady = false
-        player?.release()
+        player?.run {
+            playWhenReady = false
+            release()
+        }
         player = null
 
-        // Optionally store a preference to skip video on subsequent launches
-        // getSharedPreferences("app_prefs", MODE_PRIVATE).edit().putBoolean("video_seen", true).apply()
-
+        // Decide landing screen: MainActivity (login) or PlayerManagementActivity if already authenticated.
+        // For now we go to MainActivity:
         startActivity(Intent(this, MainActivity::class.java))
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         finish()
@@ -89,7 +89,6 @@ class SplashVideoActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        // Release early if user backgrounds app
         if (isFinishing) {
             player?.release()
             player = null
